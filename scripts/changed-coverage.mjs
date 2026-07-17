@@ -153,7 +153,18 @@ function resolveBase({ cwd, env }) {
 function listChangedSourceFiles({ cwd, env }) {
   const { base, source } = resolveBase({ cwd, env });
   const diffOutput = gitCapture(['diff', '--name-only', base, 'HEAD'], cwd);
-  const changedPaths = diffOutput ? diffOutput.split('\n').filter(Boolean) : [];
+  // Fail CLOSED on git errors: gitCapture returns null when the diff
+  // command itself fails (e.g. an unresolvable base SHA). Treating that
+  // like an empty diff would make the gate pass vacuously — the exact
+  // fail-open a coverage gate must never have. An empty string, by
+  // contrast, is a genuinely empty diff.
+  if (diffOutput === null) {
+    throw new Error(
+      `git diff against base "${base}" (${source}) failed — the base is ` +
+        `unresolvable in this repo. Refusing to pass the gate on a broken diff.`,
+    );
+  }
+  const changedPaths = diffOutput.split('\n').filter(Boolean);
 
   const sourceFiles = changedPaths.filter((relativePath) => {
     // Deleted/renamed-away files must not crash the gate: skip anything
@@ -210,7 +221,13 @@ export async function main(options = {}) {
     stderr = (message) => console.error(message),
   } = options;
 
-  const { sourceFiles } = listChangedSourceFiles({ cwd, env });
+  let sourceFiles;
+  try {
+    ({ sourceFiles } = listChangedSourceFiles({ cwd, env }));
+  } catch (error) {
+    stderr(`changed-coverage: ${error.message}`);
+    return 1;
+  }
 
   if (sourceFiles.length === 0) {
     stdout('changed-coverage: nothing to check (no changed source files)');
