@@ -1,0 +1,9 @@
+{
+  "name": "@deploy-shield/example-service",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@deploy-shield/contracts": "workspace:*"
+  }
+}
