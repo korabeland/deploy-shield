@@ -36,6 +36,7 @@
     }
   },
   "deployShield": {
-    "changedFileCoverage": 85
+    "changedFileCoverage": 85,
+    "templateVersion": "1.0.0"
   }
 }
