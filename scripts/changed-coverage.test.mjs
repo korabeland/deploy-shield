@@ -244,6 +244,30 @@ describe('changed-coverage', () => {
     expect(result.stdout).toContain('meet the 85% threshold');
   });
 
+  it('treats an all-zeros CHANGED_COVERAGE_BASE as unset and falls through', async () => {
+    const repoDir = trackedRepo();
+    writePackageJson(repoDir);
+    commitAll(repoDir, 'initial scaffold');
+
+    writeSourceFile(
+      repoDir,
+      'packages/pkg/src/good.ts',
+      'export const good = 1;\n',
+    );
+    commitAll(repoDir, 'add good.ts');
+
+    writeSingleFileCoverage(repoDir, 'packages/pkg/src/good.ts', 2, 2);
+
+    // GitHub sets github.event.before to 40 zeros on branch creation /
+    // force push — the script must fall through to HEAD~1, not crash.
+    const result = await runGate(repoDir, {
+      CHANGED_COVERAGE_BASE: '0'.repeat(40),
+    });
+
+    expect(result.code).toBe(0);
+    expect(result.stdout).toContain('meet the 85% threshold');
+  });
+
   it('falls back to the empty tree for a single-commit (root) repo', async () => {
     const repoDir = trackedRepo();
     writePackageJson(repoDir);

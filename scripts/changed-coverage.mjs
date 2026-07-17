@@ -14,7 +14,9 @@
  * vacuously in repos with no remote, since merge-base with a local default
  * branch is HEAD, giving an empty diff):
  *   1. env `CHANGED_COVERAGE_BASE`, if explicitly set — CI passes the PR
- *      base SHA or `github.event.before` here.
+ *      base SHA or `github.event.before` here. The all-zeros SHA (what
+ *      `github.event.before` holds on branch creation / force push) counts
+ *      as unset and falls through to the next tier.
  *   2. `git merge-base origin/<default-branch> HEAD`, when a local
  *      `origin` remote exists. The default branch is read from local refs
  *      only (`refs/remotes/origin/HEAD`, falling back to a local
@@ -116,7 +118,7 @@ function resolveOriginDefaultBranch(cwd) {
 
 /** Implements the base-resolution chain documented above. */
 function resolveBase({ cwd, env }) {
-  if (env.CHANGED_COVERAGE_BASE) {
+  if (env.CHANGED_COVERAGE_BASE && !/^0{40}$/.test(env.CHANGED_COVERAGE_BASE)) {
     return {
       base: env.CHANGED_COVERAGE_BASE,
       source: 'env CHANGED_COVERAGE_BASE',
