@@ -58,7 +58,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm exec depcruise packages services
+      - run: pnpm exec depcruise --config .dependency-cruiser.cjs packages services
 
   tests-build:
     name: tests-build
@@ -90,6 +90,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec jscpd .
+      # The dependency audit must exist on the non-bypassable path too —
+      # pre-push runs it, but hooks are always `--no-verify`-bypassable.
+      - run: pnpm audit --audit-level high
       - run: pnpm exec vitest run --coverage
       - name: Changed-file coverage
         env:
@@ -127,6 +130,7 @@ jobs:
       - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
       - run: actionlint
       - run: yamllint .
+      - run: shellcheck scripts/*.sh tests/gates/*.sh
 
   osv:
     name: osv
@@ -187,9 +191,17 @@ jobs:
           set -euo pipefail
           echo "$NEEDS_CONTEXT" | jq .
 
+          # Iterate every job in the needs context rather than a hand-kept
+          # list: hyphenated job names break jq's `.name.result` shorthand
+          # (jq parses `.tests-build` as subtraction — a compile error), and
+          # a hardcoded list silently un-gates any job added to `needs:`
+          # but forgotten here. `keys[]` + --arg avoids both.
           failed=0
-          for job in lint typecheck architecture tests-build quality secrets workflow-lint self-verify; do
-            result=$(echo "$NEEDS_CONTEXT" | jq -r ".${job}.result")
+          for job in $(echo "$NEEDS_CONTEXT" | jq -r 'keys[]'); do
+            if [ "$job" = "osv" ]; then
+              continue # osv has its own event-aware rule below
+            fi
+            result=$(echo "$NEEDS_CONTEXT" | jq -r --arg j "$job" '.[$j].result')
             if [ "$result" != "success" ]; then
               echo "::error::Required job '$job' did not succeed (result: $result)"
               failed=1
@@ -200,7 +212,7 @@ jobs:
           # pull_request its result must be success like every other job;
           # on push to main it is expected to be 'skipped', and that is
           # the only non-success result gate tolerates for it.
-          osv_result=$(echo "$NEEDS_CONTEXT" | jq -r ".osv.result")
+          osv_result=$(echo "$NEEDS_CONTEXT" | jq -r '.osv.result')
           if [ "$EVENT_NAME" = "pull_request" ]; then
             if [ "$osv_result" != "success" ]; then
               echo "::error::Required job 'osv' did not succeed on a pull_request (result: $osv_result)"

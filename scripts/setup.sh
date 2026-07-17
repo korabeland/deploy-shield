@@ -100,8 +100,11 @@ setup_vercel() {
   local step="vercel"
 
   if [[ ! -t 0 ]]; then
-    log "Non-interactive shell — skipping Vercel prompts (VERCEL_TOKEN, VERCEL_ORG_ID, VERCEL_PROJECT_ID)."
-    record_status "$step" "skipped" "non-interactive stdin"
+    log "Non-interactive shell — skipping Vercel prompts. To set them directly:"
+    log "  printf '%s' \"\$VERCEL_TOKEN\" | gh secret set VERCEL_TOKEN"
+    log "  gh variable set VERCEL_ORG_ID --body \"<org id>\""
+    log "  gh variable set VERCEL_PROJECT_ID --body \"<project id>\""
+    record_status "$step" "skipped" "non-interactive stdin (commands printed)"
     return
   fi
 
