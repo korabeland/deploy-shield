@@ -1,0 +1,196 @@
+name: CI
+
+# No `paths:` filters anywhere in this workflow. A required status check
+# (`gate`) in a path-filtered workflow strands PRs that don't touch the
+# filtered paths — the check never runs and the PR can never merge.
+# Path-based skipping, if ever needed, must happen inside a job, not here.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      # corepack must run before setup-node's `cache: pnpm`, which shells
+      # out to `pnpm store path` to locate the cache directory — pnpm has
+      # to already be resolvable on PATH for that to work.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec eslint . --max-warnings 0
+      - run: pnpm exec prettier --check .
+
+  typecheck:
+    name: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run typecheck
+
+  architecture:
+    name: architecture
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec depcruise packages services
+
+  tests-build:
+    name: tests-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec vitest run --coverage
+
+  quality:
+    name: quality
+    runs-on: ubuntu-latest
+    steps:
+      # Full history is required here (not in the other jobs): the
+      # changed-coverage script needs the PR base commit / `before` commit
+      # to actually be present locally to diff against.
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec jscpd .
+      - run: pnpm exec vitest run --coverage
+      - name: Changed-file coverage
+        env:
+          # Base-resolution: PR events diff against the PR base SHA;
+          # `main` pushes diff against the pre-push commit. Both are
+          # fetchable because checkout above uses fetch-depth: 0.
+          CHANGED_COVERAGE_BASE: >-
+            ${{ github.event_name == 'pull_request' &&
+            github.event.pull_request.base.sha ||
+            github.event.before }}
+        run: node scripts/changed-coverage.mjs
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # GITLEAKS_LICENSE is only required for organization-owned repos;
+          # personal-account repos are exempt (gitleaks-action README).
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  workflow-lint:
+    name: workflow-lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: jdx/mise-action@dad1bfd3df957f44999b559dd69dc1671cb4e9ea # v4.2.1
+      - run: actionlint
+      - run: yamllint .
+
+  osv:
+    name: osv
+    # The reusable workflow diffs `$GITHUB_BASE_REF` against the head
+    # commit, which only exists on pull_request events. `gate` tolerates
+    # this job being skipped on `push` — see the `gate` job below.
+    if: github.event_name == 'pull_request'
+    permissions:
+      actions: read
+      security-events: write
+      contents: read
+    # v2.3.8
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable-pr.yml@9a498708959aeaef5ef730655706c5a1df1edbc2
+    with:
+      scan-args: |-
+        --lockfile=./pnpm-lock.yaml
+
+  gate:
+    name: gate
+    needs:
+      - lint
+      - typecheck
+      - architecture
+      - tests-build
+      - quality
+      - secrets
+      - workflow-lint
+      - osv
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every job to have succeeded
+        env:
+          NEEDS_CONTEXT: ${{ toJSON(needs) }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          echo "$NEEDS_CONTEXT" | jq .
+
+          failed=0
+          for job in lint typecheck architecture tests-build quality secrets workflow-lint; do
+            result=$(echo "$NEEDS_CONTEXT" | jq -r ".${job}.result")
+            if [ "$result" != "success" ]; then
+              echo "::error::Required job '$job' did not succeed (result: $result)"
+              failed=1
+            fi
+          done
+
+          # osv only runs on pull_request (see the osv job's `if:`). On a
+          # pull_request its result must be success like every other job;
+          # on push to main it is expected to be 'skipped', and that is
+          # the only non-success result gate tolerates for it.
+          osv_result=$(echo "$NEEDS_CONTEXT" | jq -r ".osv.result")
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            if [ "$osv_result" != "success" ]; then
+              echo "::error::Required job 'osv' did not succeed on a pull_request (result: $osv_result)"
+              failed=1
+            fi
+          elif [ "$osv_result" != "success" ] && [ "$osv_result" != "skipped" ]; then
+            echo "::error::Job 'osv' had an unexpected result on a non-pull_request run (result: $osv_result)"
+            failed=1
+          fi
+
+          if [ "$failed" -eq 1 ]; then
+            exit 1
+          fi
+          echo "All required checks passed."
