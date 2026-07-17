@@ -30,7 +30,10 @@
   "pnpm": {
     "onlyBuiltDependencies": [
       "lefthook"
-    ]
+    ],
+    "overrides": {
+      "qs": ">=6.15.2"
+    }
   },
   "deployShield": {
     "changedFileCoverage": 85
