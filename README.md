@@ -66,7 +66,12 @@ Database-per-service is a documented **convention**, not something v1's tooling 
 
 ## Vercel setup
 
-- Secrets: `VERCEL_TOKEN` (repo secret). Variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. `scripts/setup.sh` prompts for all three.
+- Secrets: `VERCEL_TOKEN` (repo secret). Variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. `scripts/setup.sh` prompts for all three; non-interactively (agents, CI), set them directly:
+  ```bash
+  printf '%s' "$VERCEL_TOKEN" | gh secret set VERCEL_TOKEN
+  gh variable set VERCEL_ORG_ID --body "<org id>"
+  gh variable set VERCEL_PROJECT_ID --body "<project id>"
+  ```
 - Vercel's **git auto-deploy integration must stay OFF**. `services/example-service/vercel.json` sets `"git": {"deploymentEnabled": false}` declaratively — this survives someone later reconnecting the git integration in the dashboard; the dashboard toggle alone does not.
 - Preview deploys run on every PR push; since the Vercel bot doesn't comment on CLI-driven deploys, the workflow posts/updates a sticky PR comment with the preview URL itself.
 - Production deploys are triggered by the CI workflow completing successfully on `main` (a `workflow_run` trigger, not `push`) — this makes "no green, no deploy" structural even for ruleset-bypassing pushes.
@@ -92,5 +97,6 @@ GitHub template settings don't clone with the repo — re-apply these after "Use
 - Update the badge `OWNER/REPO` at the top of this README to the new repo's path.
 - Keep one deliberately-broken demo PR open (fake secret + cross-service import) showing the red `gate` check as a live demo.
 - Cut a GitHub release with a matching `CHANGELOG.md` entry for each version bump.
+- Downstream clones: update the `LICENSE` copyright holder if your organization requires it (the template ships MIT under the template author's name).
 
 See [SPEC.md](SPEC.md) for the full design and locked decisions, [AGENTS.md](AGENTS.md) for the rules every downstream agent must follow, and [docs/maintaining.md](docs/maintaining.md) for template-authoring guidance.

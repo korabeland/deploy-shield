@@ -2,6 +2,8 @@
 
 For every gate: what a failure means, the sanctioned fix, and the sanctioned override (if one exists). If no override is listed, there isn't one — the fix is the only path.
 
+> **If a hook reports a tool "missing — run `mise install`" even though `mise install` succeeded:** the shell (or GUI git client) launching the hook doesn't have mise's shims on PATH. Run `eval "$(mise activate zsh)"` (or the equivalent for your shell) and add it to your shell rc; for GUI clients, add `~/.local/share/mise/shims` to the PATH they launch with. This applies to every mise-managed gate below (gitleaks, shellcheck, yamllint, actionlint, osv-scanner).
+
 ## gitleaks (secret scanning)
 
 - **Runs:** pre-commit (`gitleaks git --pre-commit --redact --staged`), CI `secrets` job (full-history diff via `gitleaks-action`).
@@ -78,6 +80,34 @@ For every gate: what a failure means, the sanctioned fix, and the sanctioned ove
 - **Failure means:** a SAST rule matched.
 - **Fix:** fix the flagged pattern.
 - **Override:** `// nosemgrep: <rule-id>` on the matched line, with a justification comment — never a bare `// nosemgrep`.
+
+## ShellCheck
+
+- **Runs:** pre-commit on staged `*.sh` files, CI `workflow-lint` job (`shellcheck scripts/*.sh tests/gates/*.sh`).
+- **Failure means:** a shell script has a construct ShellCheck flags (quoting, unset variables, portability).
+- **Fix:** fix the script — the finding's `SC` code links to a wiki page with the reasoning and the safe pattern.
+- **Override:** a targeted `# shellcheck disable=SCxxxx` comment on the line above, with a justification comment. Never a file-wide disable directive.
+
+## yamllint
+
+- **Runs:** pre-commit on staged `*.yml`/`*.yaml` files, CI `workflow-lint` job (`yamllint .`).
+- **Failure means:** a YAML file violates `.yamllint.yml` (line length >120, indentation, syntax).
+- **Fix:** fix the YAML.
+- **Override:** a targeted `# yamllint disable-line rule:<name>` comment, or — for a rule that's genuinely wrong for this repo — a conscious edit to `.yamllint.yml` with a comment explaining why.
+
+## actionlint
+
+- **Runs:** pre-commit on staged workflow files, CI `workflow-lint` job.
+- **Failure means:** a GitHub Actions workflow has a real defect — bad expression syntax, unknown context field, shellcheck findings inside `run:` blocks, wrong input names for an action.
+- **Fix:** fix the workflow. actionlint findings are almost always genuine bugs that would otherwise surface as broken CI runs.
+- **Override:** none — there is no suppression mechanism, and that's fine: fix the workflow.
+
+## self-verify (gate self-verification suite)
+
+- **Runs:** CI `self-verify` job (`bash tests/gates/verify-gates.sh`); runnable locally the same way.
+- **Failure means:** a *gate itself* regressed — one of the covered gates (gitleaks, ESLint, dependency-cruiser, changed-file coverage) stopped rejecting bad input, or a supposedly-clean commit stopped passing. This is almost never caused by your feature change directly; it's caused by changes to gate configs.
+- **Fix:** the fix nearly always lives in `lefthook.yml`, `.github/workflows/ci.yml`, or `tests/gates/verify-gates.sh` together — any change to a gate command must update all three surfaces in the same commit (see AGENTS.md). Run the suite locally for the failing scenario's output.
+- **Override:** none. A red self-verify means the safety net has a hole; nothing else merges through it.
 
 ## License allowlist
 

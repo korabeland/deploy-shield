@@ -32,6 +32,8 @@ Every gate is defined in up to three places that must agree:
 
 Any change to a gate's command, threshold, or scope updates all three in the same commit. The self-verify CI job is the regression net — if it goes red after your change, the gates and their tests have drifted apart.
 
+**Self-verify's coverage is intentionally partial.** The suite proves the four SPEC acceptance classes reject bad input (fake secret, lint violation, cross-service import, uncovered change) plus a clean-commit positive control. The other gates (prettier, typecheck, jscpd, audit, osv, shellcheck/yamllint/actionlint) run for real in CI and pre-push but have **no negative self-test** — a green self-verify is not proof that every gate rejects bad input. Expanding the matrix is a deliberate scope decision, not a bug fix; if you weaken one of the uncovered gates, nothing but code review catches it.
+
 ## Version pinning and upgrades
 
 - All tools are exact-pinned: npm devDependencies in `package.json`, non-npm binaries in `mise.toml`.
