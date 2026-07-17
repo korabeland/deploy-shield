@@ -28,6 +28,7 @@ jobs:
     name: preview
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     concurrency:
       group: preview-${{ github.ref }}
       cancel-in-progress: true
@@ -96,8 +97,10 @@ jobs:
           EOF
           )
 
-          existing_id=$(gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty")
+          # --paginate: without it only the first 30 comments are searched,
+          # so long PR threads would accumulate duplicate preview comments.
+          existing_id=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty" | head -1)
 
           if [ -n "$existing_id" ]; then
             gh api "repos/${{ github.repository }}/issues/comments/${existing_id}" \
@@ -110,6 +113,10 @@ jobs:
     name: production
     if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
+    # A hung deploy must fail fast: this concurrency group never cancels
+    # in-progress runs, so without a timeout one stuck Vercel call would
+    # queue every subsequent merge's deploy behind it for hours.
+    timeout-minutes: 15
     environment: production
     concurrency:
       group: production-deploy
