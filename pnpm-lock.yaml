@@ -50,12 +50,20 @@ importers:
       zod:
         specifier: 4.4.3
         version: 4.4.3
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
 
   services/example-service:
     dependencies:
       '@deploy-shield/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts
+    devDependencies:
+      '@types/node':
+        specifier: 22.20.1
+        version: 22.20.1
 
 packages:
 

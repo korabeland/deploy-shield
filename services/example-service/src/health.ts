@@ -1,4 +1,7 @@
-import { HealthResponseSchema, type HealthResponse } from '@deploy-shield/contracts';
+import {
+  HealthResponseSchema,
+  type HealthResponse,
+} from '@deploy-shield/contracts';
 
 /**
  * Handles GET /api/health. Takes the standard Web `Request` and returns a

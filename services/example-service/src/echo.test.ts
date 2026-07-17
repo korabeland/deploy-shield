@@ -1,4 +1,7 @@
-import { EchoResponseSchema, ErrorResponseSchema } from '@deploy-shield/contracts';
+import {
+  EchoResponseSchema,
+  ErrorResponseSchema,
+} from '@deploy-shield/contracts';
 import { describe, expect, it } from 'vitest';
 import { handleEcho } from './echo.js';
 

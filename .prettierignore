@@ -1,0 +1,10 @@
+# Generated / vendored — never hand-formatted.
+pnpm-lock.yaml
+node_modules/
+coverage/
+dist/
+.vercel/
+
+# Prose docs keep their own formatting conventions (tables, emphasis style);
+# Prettier's Markdown printer would rewrite both on every check.
+**/*.md

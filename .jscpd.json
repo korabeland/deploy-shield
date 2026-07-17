@@ -1,0 +1,6 @@
+{
+  "threshold": 3,
+  "format": ["typescript", "javascript"],
+  "reporters": ["console"],
+  "absolute": true
+}

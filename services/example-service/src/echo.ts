@@ -39,7 +39,8 @@ export async function handleEcho(request: Request): Promise<Response> {
 }
 
 function errorResponse(error: string, field?: string): Response {
-  const body: ErrorResponse = field === undefined ? { error } : { error, field };
+  const body: ErrorResponse =
+    field === undefined ? { error } : { error, field };
 
   return new Response(JSON.stringify(body), {
     status: 400,

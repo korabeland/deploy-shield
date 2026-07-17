@@ -12,7 +12,7 @@ export const EchoRequestSchema = z.object({
  */
 export const EchoResponseSchema = z.object({
   message: z.string(),
-  echoedAt: z.string().datetime(),
+  echoedAt: z.iso.datetime(),
 });
 
 export const HealthStatusSchema = z.enum(['ok', 'degraded']);
@@ -23,7 +23,7 @@ export const HealthStatusSchema = z.enum(['ok', 'degraded']);
 export const HealthResponseSchema = z.object({
   status: HealthStatusSchema,
   service: z.string(),
-  timestamp: z.string().datetime(),
+  timestamp: z.iso.datetime(),
 });
 
 /**
