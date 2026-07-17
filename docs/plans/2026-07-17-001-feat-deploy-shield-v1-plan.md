@@ -1,7 +1,7 @@
 ---
 title: "feat: Deploy Shield v1 — quality-gated pipeline template"
 type: feat
-status: active
+status: completed
 date: 2026-07-17
 deepened: 2026-07-17
 origin: SPEC.md
