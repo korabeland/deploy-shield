@@ -28,7 +28,19 @@ body="Nightly gates failed.
 
 Run: ${RUN_URL}
 
-${GATE_SUMMARY}"
+${GATE_SUMMARY}
+
+To pull the failing step's specifics: \`gh run view <run-id> --log-failed\`
+(the run id is the last path segment of the run URL above). Per-gate
+diagnosis and sanctioned fixes: docs/gate-failures.md."
+
+# The label normally exists (scripts/setup.sh creates it), but alerting
+# must not hard-depend on the bootstrap having run — create it defensively.
+# `--force` makes this idempotent: it updates the label if present rather
+# than erroring.
+gh label create "$LABEL" --force \
+  --description "Filed automatically by the nightly deep-scan workflow" \
+  --color B60205
 
 open_issue_number=$(gh issue list --label "$LABEL" --state open --limit 1 --json number --jq '.[0].number // empty')
 
