@@ -4,6 +4,6 @@ import { handleHealth } from '../src/health.js';
 // this default export with a standard Web `Request` and expects a standard
 // Web `Response` back — no @vercel/node dependency or runtime config needed.
 
-export default function handler(request: Request): Response {
+export default function handler(request: Request): Promise<Response> {
   return handleHealth(request);
 }

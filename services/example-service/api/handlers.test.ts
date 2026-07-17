@@ -11,7 +11,9 @@ import healthHandler from './health.js';
 // handlers they wrap) so the changed-file coverage gate sees them as covered.
 describe('api entrypoints', () => {
   it('health entrypoint returns a contracts-shaped health response', async () => {
-    const response = healthHandler(new Request('http://localhost/api/health'));
+    const response = await healthHandler(
+      new Request('http://localhost/api/health'),
+    );
 
     expect(response.status).toBe(200);
     HealthResponseSchema.parse(await response.json());

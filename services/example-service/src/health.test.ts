@@ -4,7 +4,9 @@ import { handleHealth } from './health.js';
 
 describe('handleHealth', () => {
   it('returns a contracts-typed JSON response for a valid request', async () => {
-    const response = handleHealth(new Request('http://localhost/api/health'));
+    const response = await handleHealth(
+      new Request('http://localhost/api/health'),
+    );
 
     expect(response.status).toBe(200);
     expect(response.headers.get('content-type')).toBe('application/json');

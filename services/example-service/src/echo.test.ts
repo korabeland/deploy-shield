@@ -36,6 +36,17 @@ describe('handleEcho', () => {
     expect(body.error).not.toBe('invalid request body');
   });
 
+  it('rejects a valid-JSON non-object body without inventing a field name', async () => {
+    // "hello" is valid JSON but not an object — zod's issue has an empty
+    // path, so the error body must omit `field`, not claim field "undefined".
+    const response = await handleEcho(jsonRequest('hello'));
+
+    expect(response.status).toBe(400);
+    const body = ErrorResponseSchema.parse(await response.json());
+    expect(body.field).toBeUndefined();
+    expect(body.error).toBeTruthy();
+  });
+
   it('rejects a malformed (non-JSON) body without a field name', async () => {
     const response = await handleEcho(
       new Request('http://localhost/api/echo', {

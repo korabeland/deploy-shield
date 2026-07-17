@@ -1,20 +1,14 @@
-import {
-  HealthResponseSchema,
-  type HealthResponse,
-} from '@deploy-shield/contracts';
+import { HealthResponseSchema } from '@deploy-shield/contracts';
+import { exampleService } from './service.js';
 
 /**
- * Handles GET /api/health. Takes the standard Web `Request` and returns a
- * standard Web `Response` so it can run as a Vercel Edge Function with no
- * extra runtime dependency, and be called directly in tests with no
- * server needed.
+ * Handles GET /api/health. Adapts the standard Web `Request`/`Response`
+ * pair onto the service's `HealthPort` implementation. Web-standard
+ * signature — runs on Vercel's default Node.js runtime with no extra
+ * dependency, and can be called directly in tests with no server needed.
  */
-export function handleHealth(_request: Request): Response {
-  const body: HealthResponse = {
-    status: 'ok',
-    service: 'example-service',
-    timestamp: new Date().toISOString(),
-  };
+export async function handleHealth(_request: Request): Promise<Response> {
+  const body = await exampleService.check();
 
   // Validate against the contract before responding, so the handler and the
   // schema it claims to satisfy can never silently drift apart.
