@@ -12,6 +12,10 @@
 set -euo pipefail
 
 RULESET_FILE=".github/rulesets/main.json"
+# Vercel's Root Directory for the deployed service. The deploy workflow runs
+# the Vercel CLI from the repo root so pnpm workspace symlinks resolve; this
+# setting is what tells Vercel which subdirectory is the app.
+DEFAULT_ROOT_DIR="services/example-service"
 NIGHTLY_LABEL="nightly-failure"
 NIGHTLY_LABEL_COLOR="B60205"
 NIGHTLY_LABEL_DESC="Filed automatically by the nightly deep-scan workflow"
@@ -104,6 +108,10 @@ setup_vercel() {
     log "  printf '%s' \"\$VERCEL_TOKEN\" | gh secret set VERCEL_TOKEN"
     log "  gh variable set VERCEL_ORG_ID --body \"<org id>\""
     log "  gh variable set VERCEL_PROJECT_ID --body \"<project id>\""
+    log "And set the project's Root Directory (no CLI flag exists for it):"
+    log "  curl -X PATCH \"https://api.vercel.com/v9/projects/<project id>?teamId=<org id>\" \\"
+    log "    -H \"Authorization: Bearer \$VERCEL_TOKEN\" -H 'Content-Type: application/json' \\"
+    log "    -d '{\"rootDirectory\":\"$DEFAULT_ROOT_DIR\"}'"
     record_status "$step" "skipped" "non-interactive stdin (commands printed)"
     return
   fi
@@ -143,6 +151,29 @@ setup_vercel() {
       any_set=1
     else
       warn "Failed to set VERCEL_PROJECT_ID variable."
+    fi
+  fi
+
+  # Root Directory has no CLI flag, so it goes through the REST API. Without
+  # it the deploy workflow — which runs from the repo root on purpose — has
+  # no idea which subdirectory holds the service.
+  if [[ -n "$token" && -n "$project_id" ]]; then
+    local root_dir=""
+    read -r -p "Service root directory [$DEFAULT_ROOT_DIR]: " root_dir || root_dir=""
+    root_dir="${root_dir:-$DEFAULT_ROOT_DIR}"
+
+    local api="https://api.vercel.com/v9/projects/${project_id}"
+    if [[ -n "$org_id" ]]; then
+      api="${api}?teamId=${org_id}"
+    fi
+
+    if curl -fsS -X PATCH "$api" \
+      -H "Authorization: Bearer ${token}" \
+      -H "Content-Type: application/json" \
+      -d "{\"rootDirectory\":\"${root_dir}\"}" >/dev/null; then
+      log "Vercel Root Directory set to '${root_dir}'."
+    else
+      warn "Could not set the Vercel Root Directory. Set it under Project Settings → General → Root Directory, or deploys will fail to find the service."
     fi
   fi
 

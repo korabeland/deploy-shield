@@ -75,9 +75,16 @@ jobs:
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=preview --cwd services/example-service
-          npx --yes vercel@"$VERCEL_CLI_VERSION" build --cwd services/example-service
-          url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --cwd services/example-service)
+          # Run from the REPO ROOT, not --cwd services/example-service. The
+          # service's Vercel project carries a Root Directory setting instead
+          # (scripts/setup.sh applies it). With --cwd, Vercel resolves the
+          # pnpm workspace symlink relative to the git root but joins it onto
+          # the cwd, producing a doubled path
+          # (services/example-service/services/example-service/node_modules/…)
+          # and failing every deploy of a workspace-dependent service.
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=preview
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build
+          url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt)
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       - name: Post or update sticky preview comment
@@ -178,6 +185,8 @@ jobs:
           VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
         run: |
           set -euo pipefail
-          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production --cwd services/example-service
-          npx --yes vercel@"$VERCEL_CLI_VERSION" build --prod --cwd services/example-service
-          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod --cwd services/example-service
+          # Repo root, not --cwd — see the preview job's comment on the
+          # workspace-symlink path doubling.
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build --prod
+          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod
