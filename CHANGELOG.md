@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file. The format is b
 
 Releases are the **only** update signal for downstream clones — there is no mechanism that propagates template changes into a repo that already ran "Use this template". Check this file (or the GitHub Releases page) against your clone's `package.json` → `deployShield.templateVersion` to see whether you're behind.
 
+## [1.2.0] - 2026-07-19
+
+### Fixed
+
+- **Test files under `api/` no longer deploy as live endpoints.** Vercel compiles every file in that directory into its own serverless function, so a colocated `api/handlers.test.ts` was building into `handlers.test.func` and would have shipped as a publicly reachable route. The service's entrypoint tests moved to `src/`, and a `.vercelignore` now excludes `*.test.ts` as a second guard.
+- **Deploys of a workspace-dependent service now work.** The Vercel CLI ran with `--cwd <service>`, which resolves pnpm workspace symlinks relative to the git root but joins them onto the cwd — producing a doubled path (`services/example-service/services/example-service/node_modules/…`) and failing every deploy. Both jobs now run the CLI from the repo root.
+
+### Changed
+
+- `scripts/setup.sh` sets the Vercel project's **Root Directory** (via the REST API — the CLI has no flag for it), which is what makes the repo-root deploy above resolve to the right service. Its non-interactive branch prints the equivalent `curl`.
+- README documents where the Vercel org/project IDs come from, the Root Directory requirement, and the never-put-tests-in-`api/` rule.
+
+### Notes
+
+- Both fixes were found by the first live deploy against a real Vercel project — neither was reachable by any local gate, since no gate exercises Vercel's builder.
+
 ## [1.1.0] - 2026-07-19
 
 ### Added
