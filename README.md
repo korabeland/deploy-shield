@@ -66,12 +66,13 @@ Database-per-service is a documented **convention**, not something v1's tooling 
 
 ## Vercel setup
 
-- Secrets: `VERCEL_TOKEN` (repo secret). Variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`. `scripts/setup.sh` prompts for all three; non-interactively (agents, CI), set them directly:
+- Secrets: `VERCEL_TOKEN` (repo secret). Variables: `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID` — these are identifiers, not credentials, which is why they're variables. `scripts/setup.sh` prompts for all three; non-interactively (agents, CI), set them directly:
   ```bash
   printf '%s' "$VERCEL_TOKEN" | gh secret set VERCEL_TOKEN
   gh variable set VERCEL_ORG_ID --body "<org id>"
   gh variable set VERCEL_PROJECT_ID --body "<project id>"
   ```
+- **Where the two IDs come from:** run `npx vercel link --yes --project <name>` inside `services/example-service` — it creates the project if it doesn't exist and writes both IDs to `.vercel/project.json`. Create the token separately at <https://vercel.com/account/tokens>, scoped to the same team that owns the project (an account-scoped token can't reach a team-owned project). Two artifacts the CLI leaves behind are safe to delete: a redundant per-service `.gitignore` (the root one already covers `.vercel/` and `.env*`) and an `.env.local` holding a short-lived OIDC token that CI deploys don't use.
 - Vercel's **git auto-deploy integration must stay OFF**. `services/example-service/vercel.json` sets `"git": {"deploymentEnabled": false}` declaratively — this survives someone later reconnecting the git integration in the dashboard; the dashboard toggle alone does not.
 - Preview deploys run on every PR push; since the Vercel bot doesn't comment on CLI-driven deploys, the workflow posts/updates a sticky PR comment with the preview URL itself.
 - Production deploys are triggered by the CI workflow completing successfully on `main` (a `workflow_run` trigger, not `push`) — this makes "no green, no deploy" structural even for ruleset-bypassing pushes.
