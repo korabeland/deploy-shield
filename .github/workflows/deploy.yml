@@ -88,25 +88,39 @@ jobs:
           PREVIEW_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
-          marker="<!-- deploy-shield-preview -->"
-          body=$(cat <<EOF
+          # Comment failure must not fail the job: by this step the deploy
+          # has already succeeded, and the job's red/green should report the
+          # deploy. A failure here degrades to a ::warning annotation (not
+          # continue-on-error, which buries the diagnostics) so a broken
+          # token permission stays visible on the run summary.
+          post_comment() {
+            marker="<!-- deploy-shield-preview -->"
+            body=$(cat <<EOF
           ${marker}
           ### Vercel preview deployed
 
           ${PREVIEW_URL}
           EOF
-          )
+            )
 
-          # --paginate: without it only the first 30 comments are searched,
-          # so long PR threads would accumulate duplicate preview comments.
-          existing_id=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
-            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty" | head -1)
+            # --paginate: without it only the first 30 comments are searched,
+            # so long PR threads would accumulate duplicate preview comments.
+            existing_id=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty" | head -1)
 
-          if [ -n "$existing_id" ]; then
-            gh api "repos/${{ github.repository }}/issues/comments/${existing_id}" \
-              -X PATCH -f body="$body"
-          else
-            gh pr comment "$PR_NUMBER" --body "$body"
+            if [ -n "$existing_id" ]; then
+              gh api "repos/${{ github.repository }}/issues/comments/${existing_id}" \
+                -X PATCH -f body="$body"
+            else
+              gh pr comment "$PR_NUMBER" --body "$body"
+            fi
+          }
+
+          if ! post_comment; then
+            msg="Posting the preview comment failed (likely a github.token permission"
+            msg="$msg issue — the job needs pull-requests: write)."
+            msg="$msg The deploy itself succeeded: ${PREVIEW_URL}"
+            echo "::warning::$msg"
           fi
 
   production:

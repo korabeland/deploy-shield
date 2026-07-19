@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is b
 
 Releases are the **only** update signal for downstream clones — there is no mechanism that propagates template changes into a repo that already ran "Use this template". Check this file (or the GitHub Releases page) against your clone's `package.json` → `deployShield.templateVersion` to see whether you're behind.
 
+## [1.1.0] - 2026-07-19
+
+### Added
+
+- Gate self-verification suite expanded from 4 to 9 negatively-tested gates: new scenarios prove typecheck (pure type error at pre-push), prettier (misformatted file at pre-commit), and shellcheck/yamllint/actionlint (one bad fixture each) all still reject bad input. jscpd, audit/OSV, and the nightly gates remain deliberately untested negatively — see `docs/maintaining.md` for the reasoning.
+
+### Fixed
+
+- Preview-deploy sticky comment failure no longer fails the `preview` job when the deploy itself succeeded — it degrades to a `::warning` annotation naming the likely token-permission cause and the preview URL.
+- `scripts/setup.sh` no longer aborts mid-run (skipping the remaining steps and the summary) when Ctrl-D is pressed at a Vercel prompt — EOF now means "skip this prompt", matching blank Enter.
+
 ## [1.0.0] - 2026-07-17
 
 ### Added
