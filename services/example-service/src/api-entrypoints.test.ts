@@ -4,8 +4,8 @@ import {
 } from '@deploy-shield/contracts';
 import { describe, expect, it } from 'vitest';
 
-import echoHandler from '../api/echo.js';
-import healthHandler from '../api/health.js';
+import { POST as echoHandler } from '../api/echo.js';
+import { GET as healthHandler } from '../api/health.js';
 
 // These tests exercise the Vercel entrypoints themselves (not just the src/
 // handlers they wrap) so the changed-file coverage gate sees them as covered.

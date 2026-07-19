@@ -4,6 +4,13 @@ All notable changes to this project are documented in this file. The format is b
 
 Releases are the **only** update signal for downstream clones — there is no mechanism that propagates template changes into a repo that already ran "Use this template". Check this file (or the GitHub Releases page) against your clone's `package.json` → `deployShield.templateVersion` to see whether you're behind.
 
+## [1.3.1] - 2026-07-19
+
+### Fixed
+
+- **Vercel entrypoints use named HTTP-method exports.** They were bare `export default function handler(request: Request)`, which Vercel's Node.js runtime treats as the legacy `(req, res)` signature — the returned `Response` is discarded and the response is never ended, so every request hung until the 300s function timeout and returned 504. The runtime accepts a web-standard handler only as a named method export (`export function GET`) or `export default { fetch }`. This was masked until 1.3.0 because the module never loaded at all.
+- **The smoke test caps each request with `curl --max-time`.** Without it the first run of the smoke test sat through two 300s function timeouts and hit the job's 15-minute limit — reporting `cancelled` instead of a failure. It now also exercises `POST /api/echo`, so a regression in either method export is caught.
+
 ## [1.3.0] - 2026-07-19
 
 ### Fixed
