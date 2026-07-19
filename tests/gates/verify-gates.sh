@@ -335,6 +335,277 @@ $LAST_OUTPUT"
 }
 
 # ---------------------------------------------------------------------------
+# Scenario f — pure type error rejected at pre-push (tsc), and by CI directly
+# ---------------------------------------------------------------------------
+
+scenario_f_typecheck() {
+  section "Scenario f: type error rejected at pre-push (tsc)"
+
+  # Single quotes + trailing semicolon so this is prettier-clean, and no
+  # unused/undeclared identifiers so it's eslint-clean too — the only thing
+  # wrong with this file is the type mismatch, so tsc is the sole rejector.
+  cat >"$REPO/packages/contracts/src/gate-verify-bad-type.ts" <<'EOF'
+export const gateVerifyBadType: number = 'not a number';
+EOF
+
+  (cd "$REPO" && git add packages/contracts/src/gate-verify-bad-type.ts)
+  capture git commit -q -m "chore: add type error"
+  if [ "$LAST_STATUS" -ne 0 ]; then
+    record_fail "f-type-error-rejected-at-pre-push" \
+      "setup for this scenario failed: the commit itself was rejected at pre-commit (it should be lint- and format-clean — eslint does not duplicate tsc's diagnostics):
+$LAST_OUTPUT"
+    reset_repo
+    return
+  fi
+
+  # On main, not a branch: changed-coverage resolves vacuously here (see
+  # scenario d), so running on main keeps this leg's failure attributable to
+  # typecheck alone.
+  capture pnpm exec lefthook run pre-push
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "f-type-error-rejected-at-pre-push" "lefthook run pre-push unexpectedly SUCCEEDED"
+  elif grep -qi "mise install" <<<"$LAST_OUTPUT"; then
+    record_fail "f-type-error-rejected-at-pre-push" \
+      "pre-push failed, but for the wrong reason:
+$LAST_OUTPUT"
+  elif grep -q "error TS" <<<"$LAST_OUTPUT"; then
+    record_pass "f-type-error-rejected-at-pre-push"
+  else
+    record_fail "f-type-error-rejected-at-pre-push" \
+      "pre-push failed, but output did not look like a tsc diagnostic:
+$LAST_OUTPUT"
+  fi
+
+  # CI-parity leg: the typecheck job's exact command, run directly against
+  # the same bad file.
+  capture pnpm exec tsc --noEmit -p tsconfig.base.json
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "f-type-error-rejected-in-ci" "CI's tsc command unexpectedly SUCCEEDED"
+  elif grep -q "error TS" <<<"$LAST_OUTPUT"; then
+    record_pass "f-type-error-rejected-in-ci"
+  else
+    record_fail "f-type-error-rejected-in-ci" \
+      "CI's tsc command failed, but output did not look like a tsc diagnostic:
+$LAST_OUTPUT"
+  fi
+
+  reset_repo
+}
+
+# ---------------------------------------------------------------------------
+# Scenario g — misformatted JSON rejected at pre-commit (prettier), and by
+# CI's whole-tree run directly
+# ---------------------------------------------------------------------------
+
+scenario_g_prettier() {
+  section "Scenario g: misformatted JSON rejected at pre-commit (prettier)"
+
+  # JSON isn't touched by eslint, depcruise, or yamllint's globs — prettier
+  # is the only hook left that can reject this file.
+  printf '{"gateVerify":1,"badlyFormatted":true}\n' >"$REPO/gate-verify-bad-format.json"
+
+  (cd "$REPO" && git add gate-verify-bad-format.json)
+  capture git commit -q -m "chore: add misformatted json"
+
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "g-prettier-rejected-at-pre-commit" "git commit unexpectedly SUCCEEDED"
+  elif grep -qi "mise install" <<<"$LAST_OUTPUT"; then
+    record_fail "g-prettier-rejected-at-pre-commit" \
+      "commit was rejected, but for the wrong reason:
+$LAST_OUTPUT"
+  elif grep -q "gate-verify-bad-format.json" <<<"$LAST_OUTPUT" || grep -qi "code style issues" <<<"$LAST_OUTPUT"; then
+    record_pass "g-prettier-rejected-at-pre-commit"
+  else
+    record_fail "g-prettier-rejected-at-pre-commit" \
+      "commit was rejected, but output did not look like a prettier detection:
+$LAST_OUTPUT"
+  fi
+
+  # CI-parity leg: the lint job's exact command, run directly against the
+  # whole tree with the same bad file present.
+  capture pnpm exec prettier --check .
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "g-prettier-rejected-in-ci" "CI's prettier command unexpectedly SUCCEEDED"
+  elif grep -q "gate-verify-bad-format.json" <<<"$LAST_OUTPUT"; then
+    record_pass "g-prettier-rejected-in-ci"
+  else
+    record_fail "g-prettier-rejected-in-ci" \
+      "CI's prettier command failed, but did not name the bad file:
+$LAST_OUTPUT"
+  fi
+
+  reset_repo
+}
+
+# ---------------------------------------------------------------------------
+# Scenario h — ShellCheck violation rejected at pre-commit, and by CI's
+# workflow-lint job directly
+# ---------------------------------------------------------------------------
+
+scenario_h_shellcheck() {
+  section "Scenario h: ShellCheck violation rejected at pre-commit (shellcheck)"
+
+  mkdir -p "$REPO/scripts"
+
+  # SC2086 (unquoted variable) is info-level and doesn't fail a bare
+  # `shellcheck` invocation. An unassigned-variable reference (SC2154) is a
+  # warning-level finding that does — verified empirically against the
+  # hook's exact invocation before writing this fixture.
+  cat >"$REPO/scripts/gate-verify-bad.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+rm -rf "$undefined_var/cache"
+EOF
+
+  (cd "$REPO" && git add scripts/gate-verify-bad.sh)
+  capture git commit -q -m "chore: add shellcheck violation"
+
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "h-shellcheck-rejected-at-pre-commit" "git commit unexpectedly SUCCEEDED"
+  elif grep -qi "mise install" <<<"$LAST_OUTPUT"; then
+    record_fail "h-shellcheck-rejected-at-pre-commit" \
+      "commit was rejected, but for the wrong reason:
+$LAST_OUTPUT"
+  elif grep -q "SC[0-9]\{4\}" <<<"$LAST_OUTPUT"; then
+    record_pass "h-shellcheck-rejected-at-pre-commit"
+  else
+    record_fail "h-shellcheck-rejected-at-pre-commit" \
+      "commit was rejected, but output did not look like a shellcheck detection:
+$LAST_OUTPUT"
+  fi
+
+  # CI-parity leg: the workflow-lint job's exact shellcheck invocation,
+  # covering both globs it scans (this fixture's path matters — it must
+  # land under scripts/, one of the two globs CI actually shellchecks).
+  # Globs are quoted and left to `sh -c` to expand: capture() cd's into
+  # $REPO first, but unquoted globs here would expand against THIS script's
+  # cwd (the real repo) before capture ever runs, silently shellchecking
+  # the wrong tree.
+  capture sh -c 'shellcheck scripts/*.sh tests/gates/*.sh'
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "h-shellcheck-rejected-in-ci" "CI's shellcheck command unexpectedly SUCCEEDED"
+  elif grep -q "SC[0-9]\{4\}" <<<"$LAST_OUTPUT"; then
+    record_pass "h-shellcheck-rejected-in-ci"
+  else
+    record_fail "h-shellcheck-rejected-in-ci" \
+      "CI's shellcheck command failed, but output did not look like a shellcheck detection:
+$LAST_OUTPUT"
+  fi
+
+  reset_repo
+}
+
+# ---------------------------------------------------------------------------
+# Scenario i — over-length comment rejected at pre-commit (yamllint), and by
+# CI's whole-tree run directly
+# ---------------------------------------------------------------------------
+
+scenario_i_yamllint() {
+  section "Scenario i: over-length comment rejected at pre-commit (yamllint)"
+
+  # A properly formatted mapping, so prettier leaves this file alone — the
+  # violation lives only in a >120-char comment, which prettier does not
+  # rewrap. The comment must be multiple words: yamllint's
+  # allow-non-breakable-words lets a single unbreakable "word" run past the
+  # limit, which would silently defeat this fixture.
+  cat >"$REPO/gate-verify-bad.yml" <<'EOF'
+# this is a deliberately long comment line used only to trip the yamllint line length rule without tripping prettier formatting checks
+gateVerify: true
+EOF
+
+  (cd "$REPO" && git add gate-verify-bad.yml)
+  capture git commit -q -m "chore: add yamllint violation"
+
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "i-yamllint-rejected-at-pre-commit" "git commit unexpectedly SUCCEEDED"
+  elif grep -qi "mise install" <<<"$LAST_OUTPUT"; then
+    record_fail "i-yamllint-rejected-at-pre-commit" \
+      "commit was rejected, but for the wrong reason:
+$LAST_OUTPUT"
+  elif grep -qi "line too long" <<<"$LAST_OUTPUT"; then
+    record_pass "i-yamllint-rejected-at-pre-commit"
+  else
+    record_fail "i-yamllint-rejected-at-pre-commit" \
+      "commit was rejected, but output did not look like a yamllint detection:
+$LAST_OUTPUT"
+  fi
+
+  # CI-parity leg: the workflow-lint job's exact yamllint invocation, run
+  # directly against the whole tree with the same bad file present.
+  capture yamllint -c .yamllint.yml .
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "i-yamllint-rejected-in-ci" "CI's yamllint command unexpectedly SUCCEEDED"
+  elif grep -qi "line too long" <<<"$LAST_OUTPUT"; then
+    record_pass "i-yamllint-rejected-in-ci"
+  else
+    record_fail "i-yamllint-rejected-in-ci" \
+      "CI's yamllint command failed, but output did not look like a yamllint detection:
+$LAST_OUTPUT"
+  fi
+
+  reset_repo
+}
+
+# ---------------------------------------------------------------------------
+# Scenario j — undefined workflow context property rejected at pre-commit
+# (actionlint), and by CI's workflow-lint job directly
+# ---------------------------------------------------------------------------
+
+scenario_j_actionlint() {
+  section "Scenario j: undefined context property rejected at pre-commit (actionlint)"
+
+  mkdir -p "$REPO/.github/workflows"
+
+  # Properly formatted (prettier-clean) and under the line-length limit
+  # (yamllint-clean) — the only defect is the undefined ${{ github.* }}
+  # property, which only actionlint understands.
+  cat >"$REPO/.github/workflows/gate-verify-bad.yml" <<'EOF'
+name: gate-verify-bad
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bad-job:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "${{ github.nonexistent_property }}"
+EOF
+
+  (cd "$REPO" && git add .github/workflows/gate-verify-bad.yml)
+  capture git commit -q -m "chore: add actionlint violation"
+
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "j-actionlint-rejected-at-pre-commit" "git commit unexpectedly SUCCEEDED"
+  elif grep -qi "mise install" <<<"$LAST_OUTPUT"; then
+    record_fail "j-actionlint-rejected-at-pre-commit" \
+      "commit was rejected, but for the wrong reason:
+$LAST_OUTPUT"
+  elif grep -qi "not defined" <<<"$LAST_OUTPUT" || grep -qi "actionlint" <<<"$LAST_OUTPUT"; then
+    record_pass "j-actionlint-rejected-at-pre-commit"
+  else
+    record_fail "j-actionlint-rejected-at-pre-commit" \
+      "commit was rejected, but output did not look like an actionlint detection:
+$LAST_OUTPUT"
+  fi
+
+  # CI-parity leg: the workflow-lint job's exact command — actionlint
+  # auto-discovers everything under .github/workflows/, no path argument.
+  capture actionlint
+  if [ "$LAST_STATUS" -eq 0 ]; then
+    record_fail "j-actionlint-rejected-in-ci" "CI's actionlint command unexpectedly SUCCEEDED"
+  elif grep -qi "not defined" <<<"$LAST_OUTPUT" || grep -qi "actionlint" <<<"$LAST_OUTPUT"; then
+    record_pass "j-actionlint-rejected-in-ci"
+  else
+    record_fail "j-actionlint-rejected-in-ci" \
+      "CI's actionlint command failed, but output did not look like an actionlint detection:
+$LAST_OUTPUT"
+  fi
+
+  reset_repo
+}
+
+# ---------------------------------------------------------------------------
 # Scenario e — positive control: a clean, well-formed, tested change commits
 # and passes pre-push on main (catches gates so broken they reject
 # everything)
@@ -377,6 +648,11 @@ scenario_a_secret
 scenario_b_eslint
 scenario_c_cross_service
 scenario_d_uncovered
+scenario_f_typecheck
+scenario_g_prettier
+scenario_h_shellcheck
+scenario_i_yamllint
+scenario_j_actionlint
 scenario_e_positive_control
 
 suite_end=$(date +%s)
