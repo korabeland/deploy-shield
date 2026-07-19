@@ -4,6 +4,17 @@ All notable changes to this project are documented in this file. The format is b
 
 Releases are the **only** update signal for downstream clones — there is no mechanism that propagates template changes into a repo that already ran "Use this template". Check this file (or the GitHub Releases page) against your clone's `package.json` → `deployShield.templateVersion` to see whether you're behind.
 
+## [1.4.0] - 2026-07-19
+
+### Added
+
+- `scripts/smoke-test.sh` — the post-deploy check, extracted from the workflow so both deploy jobs share one implementation that ShellCheck and the playbook can cover. Probes `GET /api/health` and `POST /api/echo`, retries with a bounded `--max-time`, and distinguishes a timeout (`000`) from a protection wall (`401`/`302`) in its failure message.
+- **Previews are smoke-tested too.** With a Protection Bypass for Automation secret in `VERCEL_AUTOMATION_BYPASS_SECRET`, CI can reach a deployment that stays private to everyone else — so a broken build is caught on the PR rather than after it merges.
+
+### Changed
+
+- Deployments are private again. Vercel Deployment Protection covers **all** deployments; the smoke test authenticates with the bypass header rather than the service being world-readable. The demo endpoints exist to prove the pipeline works, not to be a public API.
+
 ## [1.3.1] - 2026-07-19
 
 ### Fixed

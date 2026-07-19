@@ -109,6 +109,13 @@ For every gate: what a failure means, the sanctioned fix, and the sanctioned ove
 - **Fix:** the fix nearly always lives in `lefthook.yml`, `.github/workflows/ci.yml`, or `tests/gates/verify-gates.sh` together — any change to a gate command must update all three surfaces in the same commit (see AGENTS.md). Run the suite locally for the failing scenario's output.
 - **Override:** none. A red self-verify means the safety net has a hole; nothing else merges through it.
 
+## Post-deploy smoke test
+
+- **Runs:** `scripts/smoke-test.sh` in both deploy jobs, after the deployment is created.
+- **Failure means:** the deployment uploaded successfully but the service does not serve requests. Read the codes in the error line: `500` usually means a module failed to load (a runtime dependency missing from the lambda); `000` means the request timed out, which is what a handler in the wrong export shape does — it never ends the response, so the platform kills it at 300s; `401`/`302` means the deployment is protected and `VERCEL_AUTOMATION_BYPASS_SECRET` is missing or stale.
+- **Fix:** depends on the code above. For `500`, check that shared workspace packages export **built** output and that `pnpm build` runs before the Vercel CLI. For `000`, check the `api/` entrypoints use named HTTP-method exports. For `401`, regenerate the bypass secret and update the repo secret.
+- **Override:** **none.** This is the only check in the entire pipeline that executes the deployed artifact — every other gate reasons about source. Disabling it means shipping unverified deployments, which is precisely how this template shipped a service that failed every request while all gates stayed green.
+
 ## License allowlist
 
 - **Runs:** nightly `licenses` job (`license-checker-rseidelsohn --onlyAllow "$ALLOWED_LICENSES" --excludePrivatePackages --summary`).
