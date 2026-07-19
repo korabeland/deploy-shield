@@ -112,6 +112,8 @@ The template must prove its own gates work — otherwise gate regressions are in
 
 Runs as a CI job in the template repo itself. This is acceptance criterion #2 made executable.
 
+**Amended 2026-07-19 (v1.1, post-review decision):** v1.0 shipped with exactly the four rejection classes above. The matrix now also proves rejection for **typecheck** (a pure type error at pre-push), **prettier** (a misformatted file at pre-commit), and **shellcheck / yamllint / actionlint** (one bad fixture each at pre-commit, which also proves the staged-file glob gating still matches). Deliberately still untested negatively: **jscpd** (its threshold is a repo-wide ratio, so a fixed duplication fixture silently decays as a downstream repo grows — the test would rot exactly where it's meant to protect), **audit/OSV** (require a real vulnerable dependency and network access), and the nightly gates (too heavyweight for a per-PR suite). See `docs/maintaining.md` for the coverage list.
+
 ## Productization (added to scope)
 
 The repo ships as a public GitHub product, and clones carry their own documentation:
