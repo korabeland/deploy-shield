@@ -13,7 +13,7 @@ Releases are the **only** update signal for downstream clones — there is no me
 
 ### Changed
 
-- Deployments are private again. Vercel Deployment Protection covers **all** deployments; the smoke test authenticates with the bypass header rather than the service being world-readable. The demo endpoints exist to prove the pipeline works, not to be a public API.
+- **Preview** deployments are private; the smoke test authenticates with the bypass header rather than the service being world-readable. Note that **production deployments cannot be protected on Vercel's free plan** — `deploymentType: "all"` is rejected with `428 invalid_sso_protection` ("Vercel Authentication is not available on your plan for production deployments"), so `all_except_custom_domains` is the ceiling and it covers previews only. Treat anything a free-plan project deploys to production as public.
 
 ## [1.3.1] - 2026-07-19
 
