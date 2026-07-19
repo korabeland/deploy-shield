@@ -112,7 +112,10 @@ setup_vercel() {
 
   local token="" org_id="" project_id="" any_set=0
 
-  read -r -s -p "VERCEL_TOKEN (leave blank to skip): " token
+  # `|| var=""` on each read: Ctrl-D (EOF) at a prompt makes `read` return
+  # nonzero, which under `set -e` would abort the whole script mid-run with
+  # no summary. EOF means "skip this prompt", same as a blank Enter.
+  read -r -s -p "VERCEL_TOKEN (leave blank to skip): " token || token=""
   echo
   if [[ -n "$token" ]]; then
     if printf '%s' "$token" | gh secret set VERCEL_TOKEN; then
@@ -123,7 +126,7 @@ setup_vercel() {
     fi
   fi
 
-  read -r -p "VERCEL_ORG_ID (leave blank to skip): " org_id
+  read -r -p "VERCEL_ORG_ID (leave blank to skip): " org_id || org_id=""
   if [[ -n "$org_id" ]]; then
     if gh variable set VERCEL_ORG_ID --body "$org_id"; then
       log "VERCEL_ORG_ID variable set."
@@ -133,7 +136,7 @@ setup_vercel() {
     fi
   fi
 
-  read -r -p "VERCEL_PROJECT_ID (leave blank to skip): " project_id
+  read -r -p "VERCEL_PROJECT_ID (leave blank to skip): " project_id || project_id=""
   if [[ -n "$project_id" ]]; then
     if gh variable set VERCEL_PROJECT_ID --body "$project_id"; then
       log "VERCEL_PROJECT_ID variable set."
