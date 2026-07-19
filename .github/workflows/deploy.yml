@@ -92,6 +92,16 @@ jobs:
           url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt)
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
+      # Previews are smoke-tested too: the bypass secret lets CI reach a
+      # deployment that stays private to everyone else, so a broken build is
+      # caught on the PR instead of after it merges.
+      - name: Smoke-test the preview deployment
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bash scripts/smoke-test.sh "$DEPLOY_URL"
+
       - name: Post or update sticky preview comment
         if: steps.secrets-check.outputs.configured == 'true'
         env:
@@ -211,36 +221,10 @@ jobs:
         if: steps.secrets-check.outputs.configured == 'true'
         env:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
-        run: |
-          set -euo pipefail
-          # --max-time is not optional: a handler in the wrong export shape
-          # never ends its response, so an uncapped curl sits there until the
-          # 300s function timeout and burns the whole job budget instead of
-          # reporting a failure.
-          probe() {
-            curl -s --max-time 20 -o "$2" -w '%{http_code}' \
-              "${@:3}" "$DEPLOY_URL$1" || echo 000
-          }
-          for attempt in 1 2 3; do
-            code=$(probe /api/health /tmp/smoke-health)
-            # Exercise POST too: health and echo use different method exports,
-            # and a routing regression can break one while the other answers.
-            echo_code=$(probe /api/echo /tmp/smoke-echo \
-              -X POST -H 'content-type: application/json' \
-              -d '{"message":"smoke"}')
-            if [ "$code" = "200" ] && [ "$echo_code" = "200" ]; then
-              echo "Health check passed (HTTP 200):"
-              cat /tmp/smoke-health
-              echo "Echo check passed (HTTP 200):"
-              cat /tmp/smoke-echo
-              exit 0
-            fi
-            echo "Attempt $attempt: health=$code echo=$echo_code — retrying in 5s"
-            sleep 5
-          done
-          msg="Smoke test failed against $DEPLOY_URL — health=$code echo=$echo_code"
-          msg="$msg (expected 200/200). The deployment uploaded but the service"
-          msg="$msg does not serve requests. HTTP 000 means the request timed out."
-          echo "::error::$msg"
-          cat /tmp/smoke-health /tmp/smoke-echo 2>/dev/null || true
-          exit 1
+          # Lets CI reach a deployment that stays private to everyone else.
+          # Generate with: PATCH /v1/projects/{id}/protection-bypass, then
+          # store the value as this repo secret. Without it a protected
+          # deployment answers 401/302 and the smoke test cannot verify
+          # anything.
+          BYPASS: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+        run: bash scripts/smoke-test.sh "$DEPLOY_URL"
