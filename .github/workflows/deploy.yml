@@ -1,0 +1,169 @@
+name: Deploy
+
+# Two triggers, two jobs:
+#   - `pull_request`  -> preview job: a PR gets a live preview on every push.
+#   - `workflow_run`  -> production job: fires only once the CI workflow has
+#     completed on `main`. This makes "no green, no deploy" structural even
+#     for ruleset-bypassing pushes (admins, `--bypass`) — the production job
+#     literally cannot start without a completed CI run to react to.
+#
+# The `vercel` package was removed as a devDependency (its transitive deps
+# failed this repo's own blocking audit gates), so the CLI is invoked via
+# `npx --yes vercel@$VERCEL_CLI_VERSION` everywhere below, pinned once here.
+on:
+  pull_request:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
+
+env:
+  VERCEL_CLI_VERSION: 56.3.1
+
+permissions:
+  contents: read
+
+jobs:
+  preview:
+    name: preview
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: preview-${{ github.ref }}
+      cancel-in-progress: true
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - name: Check Vercel secrets are configured
+        id: secrets-check
+        env:
+          HAS_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+          HAS_ORG: ${{ vars.VERCEL_ORG_ID != '' }}
+          HAS_PROJECT: ${{ vars.VERCEL_PROJECT_ID != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ORG" = "true" ] && [ "$HAS_PROJECT" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets not configured, skipping preview"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.secrets-check.outputs.configured == 'true'
+
+      - run: corepack enable
+        if: steps.secrets-check.outputs.configured == 'true'
+      # corepack must run before setup-node's `cache: pnpm`, which shells
+      # out to `pnpm store path` to locate the cache directory — pnpm has
+      # to already be resolvable on PATH for that to work.
+      - uses: actions/setup-node@v7
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: steps.secrets-check.outputs.configured == 'true'
+
+      - name: Deploy preview
+        id: deploy
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=preview --cwd services/example-service
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build --cwd services/example-service
+          url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --cwd services/example-service)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      - name: Post or update sticky preview comment
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PREVIEW_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          marker="<!-- deploy-shield-preview -->"
+          body=$(cat <<EOF
+          ${marker}
+          ### Vercel preview deployed
+
+          ${PREVIEW_URL}
+          EOF
+          )
+
+          # --paginate: without it only the first 30 comments are searched,
+          # so long PR threads would accumulate duplicate preview comments.
+          existing_id=$(gh api --paginate "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+            --jq "[.[] | select(.body | startswith(\"${marker}\"))][0].id // empty" | head -1)
+
+          if [ -n "$existing_id" ]; then
+            gh api "repos/${{ github.repository }}/issues/comments/${existing_id}" \
+              -X PATCH -f body="$body"
+          else
+            gh pr comment "$PR_NUMBER" --body "$body"
+          fi
+
+  production:
+    name: production
+    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    # A hung deploy must fail fast: this concurrency group never cancels
+    # in-progress runs, so without a timeout one stuck Vercel call would
+    # queue every subsequent merge's deploy behind it for hours.
+    timeout-minutes: 15
+    environment: production
+    concurrency:
+      group: production-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: read
+    steps:
+      - name: Check Vercel secrets are configured
+        id: secrets-check
+        env:
+          HAS_TOKEN: ${{ secrets.VERCEL_TOKEN != '' }}
+          HAS_ORG: ${{ vars.VERCEL_ORG_ID != '' }}
+          HAS_PROJECT: ${{ vars.VERCEL_PROJECT_ID != '' }}
+        run: |
+          if [ "$HAS_TOKEN" = "true" ] && [ "$HAS_ORG" = "true" ] && [ "$HAS_PROJECT" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Vercel secrets not configured, skipping production deploy"
+          fi
+
+      # Check out the exact commit CI verified, not the branch tip at event
+      # time — a default checkout can race ahead if someone bypass-pushes
+      # to main while this deploy is starting.
+      - uses: actions/checkout@v7
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - run: corepack enable
+        if: steps.secrets-check.outputs.configured == 'true'
+      - uses: actions/setup-node@v7
+        if: steps.secrets-check.outputs.configured == 'true'
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+        if: steps.secrets-check.outputs.configured == 'true'
+
+      - name: Deploy to production
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ vars.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ vars.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production --cwd services/example-service
+          npx --yes vercel@"$VERCEL_CLI_VERSION" build --prod --cwd services/example-service
+          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod --cwd services/example-service

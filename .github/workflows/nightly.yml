@@ -1,0 +1,165 @@
+name: Nightly
+
+# Tier 4 (SPEC.md): deep, slow scans that don't belong on the PR path —
+# Semgrep SAST, per-package incremental mutation testing, and a license
+# allowlist audit. A red run files (or updates, label-deduplicated) a
+# GitHub issue via `gh`, so it's assignable to an agent next session.
+# Deploys stay governed by the Tier 3 merge gates; this workflow never
+# blocks anything.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+    inputs:
+      force_fail:
+        description: Deliberately fail a job, to test the issue-filing path
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly-${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  semgrep:
+    name: semgrep
+    runs-on: ubuntu-latest
+    # Pinned to the same Semgrep version mise.toml pins for local/CI parity
+    # (`pipx:semgrep` in mise.toml). No SEMGREP_APP_TOKEN — registry
+    # rulesets only, no login required.
+    container:
+      image: semgrep/semgrep:1.170.0
+    steps:
+      - uses: actions/checkout@v7
+      - name: Semgrep scan (TypeScript + security-audit rulesets)
+        run: semgrep scan --config p/typescript --config p/security-audit --error .
+
+  mutation:
+    name: mutation (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      # Two sequential-ish legs via matrix rather than two hand-written
+      # steps: same amount of YAML either way, but a matrix leg gets its
+      # own log group and can run in parallel, and needs.mutation.result
+      # still aggregates to 'failure' if either leg fails.
+      matrix:
+        include:
+          - dir: packages/contracts
+            name: contracts
+          - dir: services/example-service
+            name: example-service
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Restore Stryker incremental cache
+        uses: actions/cache@v6
+        with:
+          path: ${{ matrix.dir }}/reports/stryker-incremental.json
+          # Incremental result files evolve every run, so the cache key
+          # always includes the run id (guaranteeing a save at the end of
+          # this job); restore-keys falls back to the most recent cache
+          # under the per-package prefix so incremental mode has something
+          # to diff against.
+          key: stryker-incremental-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: |
+            stryker-incremental-${{ matrix.name }}-
+      - name: Determine monthly forced full run
+        # Incremental mode can't see dependency or config changes, so the
+        # first Sunday of each month (day-of-month <= 7 AND weekday ==
+        # Sunday) forces a full run to reset any incremental drift.
+        id: force-run
+        run: |
+          set -euo pipefail
+          day_of_month=$(date -u +%d)
+          day_of_week=$(date -u +%u) # 1=Monday .. 7=Sunday
+          if [ "$day_of_month" -le 07 ] && [ "$day_of_week" -eq 7 ]; then
+            echo "force=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "force=false" >> "$GITHUB_OUTPUT"
+          fi
+      - name: Run Stryker
+        working-directory: ${{ matrix.dir }}
+        run: pnpm exec stryker run ${{ steps.force-run.outputs.force == 'true' && '--force' || '' }}
+
+  licenses:
+    name: licenses
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: corepack enable
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: License allowlist audit
+        # Base allowlist per SPEC.md, extended with what the real
+        # dependency tree contains today (see docs/plans — U8 report):
+        # BlueOak-1.0.0 (the isaacs BSD-family license used by tar/glob/
+        # minimatch/etc., pulled in by license-checker-rseidelsohn's own
+        # npm-registry toolchain), 0BSD (tslib, via vite/rolldown), MPL-2.0
+        # (@edge-runtime/*, lightningcss, via vitest's optional browser
+        # mocker dependency on vite), CC-BY-4.0 (caniuse-lite, via
+        # browserslist in Stryker's Babel-based instrumenter), and the
+        # SPDX tooling's own licenses (CC-BY-3.0, CC0-1.0, "MIT AND
+        # CC-BY-3.0" for spdx-exceptions/spdx-license-ids/spdx-ranges).
+        # This allowlist lives here, not in a hidden constant.
+        env:
+          # SPDX-expression-list form of the allowlist, kept out of `run:`
+          # purely to stay under the repo's yamllint line-length limit.
+          ALLOWED_LICENSES: >-
+            MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause;BlueOak-1.0.0;0BSD;
+            MPL-2.0;CC-BY-4.0;CC-BY-3.0;CC0-1.0;MIT AND CC-BY-3.0
+        run: >-
+          pnpm exec license-checker-rseidelsohn
+          --onlyAllow "$ALLOWED_LICENSES"
+          --excludePrivatePackages
+          --summary
+
+  force-fail:
+    name: force-fail
+    runs-on: ubuntu-latest
+    # Only runs on a manual dispatch with force_fail=true — makes the
+    # issue-filing path below testable on demand without waiting for a
+    # real gate to go red.
+    if: ${{ inputs.force_fail }}
+    steps:
+      - name: Deliberately fail
+        run: |
+          echo "::error::force_fail=true was passed to workflow_dispatch — failing on purpose."
+          exit 1
+
+  report-failure:
+    name: report-failure
+    needs:
+      - semgrep
+      - mutation
+      - licenses
+      - force-fail
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - name: File or update the nightly-failure issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          GATE_SUMMARY: |
+            semgrep: ${{ needs.semgrep.result }}
+            mutation: ${{ needs.mutation.result }}
+            licenses: ${{ needs.licenses.result }}
+            force-fail: ${{ needs.force-fail.result }}
+        run: scripts/nightly-issue.sh

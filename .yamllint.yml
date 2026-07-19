@@ -1,0 +1,29 @@
+---
+extends: default
+
+ignore:
+  - pnpm-lock.yaml
+  - node_modules/
+  - coverage/
+  - dist/
+  - .vercel/
+  - reports/
+
+rules:
+  # Single-document YAML files (pnpm-workspace.yaml, GitHub Actions
+  # workflows) are the norm here; requiring a `---` marker on every one
+  # of them is churn without payoff.
+  document-start: disable
+
+  line-length:
+    max: 120
+    allow-non-breakable-words: true
+    allow-non-breakable-inline-mappings: true
+
+  # GitHub Actions workflows use `on:` as a mapping key. Under YAML 1.1,
+  # `on` is a boolean literal, so yamllint's default `truthy` rule (which
+  # also checks keys) flags every workflow file's trigger key. Checking
+  # values only keeps the rule useful (`enabled: yes` still gets caught)
+  # without that false positive.
+  truthy:
+    check-keys: false

@@ -1,6 +1,16 @@
 # Deploy Shield — Specification
 
-**Status:** Draft v1.1 (decisions locked 2026-07-17; revised same day after external research — tier split, mutation thresholds, aggregator check, tool deprecations)
+**Status:** v1 shipped 2026-07-17 (decisions locked 2026-07-17; revised same day after external research — tier split, mutation thresholds, aggregator check, tool deprecations)
+
+### As-shipped revisions
+
+A handful of implementation details diverged from this document's original text once real tool versions and the template's own gates were in the loop. The "Locked decisions" table above is otherwise unchanged.
+
+1. **Vercel CLI is not a `devDependency`.** Its transitive dependencies failed the template's own blocking audit gates, so `deploy.yml` invokes it via `npx --yes vercel@$VERCEL_CLI_VERSION`, pinned once at the top of the workflow, instead of installing it as a pinned devDependency.
+2. **TypeScript is pinned at 6.0.3, not 7.x.** `typescript-eslint` 8.64.0 only supports TypeScript `<6.1.0`, and type-aware zero-warning linting is the core lint gate.
+3. **`tsconfig.base.json` sets `"types": ["node"]` explicitly**, and every workspace package declares its own `@types/node` devDependency — TypeScript 6's automatic `@types` inclusion didn't resolve per-package under pnpm's workspace layout.
+4. **The nightly license allowlist is broader than the five licenses named above.** It adds `BlueOak-1.0.0`, `0BSD`, `MPL-2.0`, `CC-BY-4.0`, `CC-BY-3.0`, `CC0-1.0`, and `MIT AND CC-BY-3.0` — all found only in the devDependency tree — and lives in `nightly.yml`'s `ALLOWED_LICENSES` env; `--production` scoping is documented as an alternative for downstream projects that would rather exclude dev tooling from the scan.
+5. **`package.json` carries a `pnpm.overrides` entry for `qs` (`>=6.15.2`)** — a live OSV advisory the unfiltered OSV-Scanner gate caught during the template's own self-verification. Left in place deliberately as the worked example of the OSV gate doing its job (see `docs/gate-failures.md`).
 
 ## What it is
 
