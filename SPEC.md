@@ -11,6 +11,19 @@ A handful of implementation details diverged from this document's original text 
 3. **`tsconfig.base.json` sets `"types": ["node"]` explicitly**, and every workspace package declares its own `@types/node` devDependency — TypeScript 6's automatic `@types` inclusion didn't resolve per-package under pnpm's workspace layout.
 4. **The nightly license allowlist is broader than the five licenses named above.** It adds `BlueOak-1.0.0`, `0BSD`, `MPL-2.0`, `CC-BY-4.0`, `CC-BY-3.0`, `CC0-1.0`, and `MIT AND CC-BY-3.0` — all found only in the devDependency tree — and lives in `nightly.yml`'s `ALLOWED_LICENSES` env; `--production` scoping is documented as an alternative for downstream projects that would rather exclude dev tooling from the scan.
 5. **`package.json` carries a `pnpm.overrides` entry for `qs` (`>=6.15.2`)** — a live OSV advisory the unfiltered OSV-Scanner gate caught during the template's own self-verification. Left in place deliberately as the worked example of the OSV gate doing its job (see `docs/gate-failures.md`).
+6. **A post-deploy smoke test was added to both deploy jobs** (`scripts/smoke-test.sh`). The original spec assumed a green deploy meant a working service; it does not. Three separate runtime defects shipped through every gate tier because nothing in the pipeline executed the deployed artifact — vitest transpiles TypeScript, `tsc` only checks types, and `vercel deploy` exiting 0 proves only that the upload succeeded. See `docs/maintaining.md` for the two rules those defects produced (shared packages must ship built output; `api/` entrypoints must use named HTTP-method exports).
+
+### Decision: the demo service is publicly reachable in production
+
+**Decided 2026-07-19. Accepted deliberately, not overlooked.**
+
+Vercel's free plan cannot authenticate production deployments — `ssoProtection.deploymentType: "all"` is rejected with `428 invalid_sso_protection`, and the `all_except_custom_domains` ceiling protects previews only. The example service's `/api/health` and `/api/echo` are therefore world-readable.
+
+Accepted because the deployed surface is a stateless health check and an echo: no data store, no credentials, no state to corrupt, and nothing worth attacking. Paying for a plan tier to conceal a demo endpoint is poor value, and the alternatives are worse for a teaching template — an application-level shared-secret guard would make the example service a misleading model of how to write a handler.
+
+**Rejected alternatives:** paid plan (cost with no security benefit at this surface area); app-level auth guard (harms the example's clarity); dropping the production deploy (would gut R4, the CI-only-deploy demonstration).
+
+**What downstream users must take from this:** protection settings on a free-plan project do not cover production. Verify by requesting the deployment without a bypass header rather than trusting the setting's name, and keep the deployed surface to endpoints you are content to expose — or run on a plan that supports production authentication.
 
 ## What it is
 
