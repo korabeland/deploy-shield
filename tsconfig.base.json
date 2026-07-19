@@ -17,6 +17,14 @@
     "declaration": false,
     "sourceMap": false,
     "esModuleInterop": true,
-    "verbatimModuleSyntax": true
+    "verbatimModuleSyntax": true,
+    // Contracts' package.json `exports` points at built output (dist), which
+    // is what the deployed lambda loads — Node cannot import raw .ts. This
+    // mapping lets `tsc` and editors resolve the same specifier straight to
+    // source, so typechecking never requires a build first. vitest gets the
+    // equivalent via `resolve.alias`; keep the three in sync.
+    "paths": {
+      "@deploy-shield/contracts": ["./packages/contracts/src/index.ts"]
+    }
   }
 }

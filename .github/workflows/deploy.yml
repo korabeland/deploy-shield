@@ -82,6 +82,11 @@ jobs:
           # the cwd, producing a doubled path
           # (services/example-service/services/example-service/node_modules/…)
           # and failing every deploy of a workspace-dependent service.
+          # Build workspace packages FIRST. contracts' package.json exports
+          # point at dist/, so Vercel's file tracer can only follow the
+          # import once that output exists — without this the lambda ships
+          # without its dependency and 500s on every request.
+          pnpm build
           npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=preview
           npx --yes vercel@"$VERCEL_CLI_VERSION" build
           url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt)
@@ -178,6 +183,7 @@ jobs:
         if: steps.secrets-check.outputs.configured == 'true'
 
       - name: Deploy to production
+        id: deploy
         if: steps.secrets-check.outputs.configured == 'true'
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -186,7 +192,39 @@ jobs:
         run: |
           set -euo pipefail
           # Repo root, not --cwd — see the preview job's comment on the
-          # workspace-symlink path doubling.
+          # workspace-symlink path doubling. `pnpm build` first — see the
+          # preview job's comment on why the tracer needs dist/ to exist.
+          pnpm build
           npx --yes vercel@"$VERCEL_CLI_VERSION" pull --yes --environment=production
           npx --yes vercel@"$VERCEL_CLI_VERSION" build --prod
-          npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod
+          url=$(npx --yes vercel@"$VERCEL_CLI_VERSION" deploy --prebuilt --prod)
+          echo "url=$url" >> "$GITHUB_OUTPUT"
+
+      # A deploy that exits 0 proves the upload worked, NOT that the service
+      # runs: a lambda missing a dependency deploys green and 500s on every
+      # request. Nothing else in the four gate tiers ever executes the built
+      # artifact — vitest transpiles TypeScript and tsc only checks types —
+      # so this request is the only thing standing between a broken build and
+      # production. Previews are not smoke-tested: they sit behind Vercel SSO
+      # unless the project configures Protection Bypass for Automation.
+      - name: Smoke-test the deployment
+        if: steps.secrets-check.outputs.configured == 'true'
+        env:
+          DEPLOY_URL: ${{ steps.deploy.outputs.url }}
+        run: |
+          set -euo pipefail
+          for attempt in 1 2 3; do
+            code=$(curl -s -o /tmp/smoke-body -w '%{http_code}' "$DEPLOY_URL/api/health" || echo 000)
+            if [ "$code" = "200" ]; then
+              echo "Health check passed (HTTP 200):"
+              cat /tmp/smoke-body
+              exit 0
+            fi
+            echo "Attempt $attempt: HTTP $code — retrying in 5s"
+            sleep 5
+          done
+          msg="Smoke test failed. $DEPLOY_URL/api/health returned HTTP $code,"
+          msg="$msg not 200. The deployment uploaded but the service does not run."
+          echo "::error::$msg"
+          cat /tmp/smoke-body || true
+          exit 1
