@@ -213,18 +213,34 @@ jobs:
           DEPLOY_URL: ${{ steps.deploy.outputs.url }}
         run: |
           set -euo pipefail
+          # --max-time is not optional: a handler in the wrong export shape
+          # never ends its response, so an uncapped curl sits there until the
+          # 300s function timeout and burns the whole job budget instead of
+          # reporting a failure.
+          probe() {
+            curl -s --max-time 20 -o "$2" -w '%{http_code}' \
+              "${@:3}" "$DEPLOY_URL$1" || echo 000
+          }
           for attempt in 1 2 3; do
-            code=$(curl -s -o /tmp/smoke-body -w '%{http_code}' "$DEPLOY_URL/api/health" || echo 000)
-            if [ "$code" = "200" ]; then
+            code=$(probe /api/health /tmp/smoke-health)
+            # Exercise POST too: health and echo use different method exports,
+            # and a routing regression can break one while the other answers.
+            echo_code=$(probe /api/echo /tmp/smoke-echo \
+              -X POST -H 'content-type: application/json' \
+              -d '{"message":"smoke"}')
+            if [ "$code" = "200" ] && [ "$echo_code" = "200" ]; then
               echo "Health check passed (HTTP 200):"
-              cat /tmp/smoke-body
+              cat /tmp/smoke-health
+              echo "Echo check passed (HTTP 200):"
+              cat /tmp/smoke-echo
               exit 0
             fi
-            echo "Attempt $attempt: HTTP $code — retrying in 5s"
+            echo "Attempt $attempt: health=$code echo=$echo_code — retrying in 5s"
             sleep 5
           done
-          msg="Smoke test failed. $DEPLOY_URL/api/health returned HTTP $code,"
-          msg="$msg not 200. The deployment uploaded but the service does not run."
+          msg="Smoke test failed against $DEPLOY_URL — health=$code echo=$echo_code"
+          msg="$msg (expected 200/200). The deployment uploaded but the service"
+          msg="$msg does not serve requests. HTTP 000 means the request timed out."
           echo "::error::$msg"
-          cat /tmp/smoke-body || true
+          cat /tmp/smoke-health /tmp/smoke-echo 2>/dev/null || true
           exit 1

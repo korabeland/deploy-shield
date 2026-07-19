@@ -34,6 +34,10 @@ Any change to a gate's command, threshold, or scope updates all three in the sam
 
 **Self-verify's coverage is intentionally partial.** The suite proves nine gates reject bad input — fake secret (gitleaks), ESLint violation, cross-service import (dependency-cruiser), uncovered change (changed-coverage), type error (typecheck), misformatted file (prettier), and one bad fixture each for shellcheck, yamllint, and actionlint — plus a clean-commit positive control. Three classes remain deliberately untested negatively: **jscpd**, because its threshold is a repo-wide ratio and a fixed duplication fixture silently loses potency as the repo grows (the negative test would rot exactly where it's meant to protect); **audit/OSV**, because a negative test needs a real vulnerable dependency in the lockfile plus network access; and the **nightly gates** (semgrep, mutation, licenses), which are too heavyweight for a per-PR suite. If you weaken one of those, nothing but code review catches it.
 
+## Vercel entrypoints: named method exports only
+
+Files in a service's `api/` directory must export named HTTP methods — `export function GET(request: Request)`, `export function POST(...)` — or `export default { fetch }`. A bare `export default function handler(request)` is silently interpreted as the legacy `(req, res)` Node signature: the `Response` you return is discarded, nothing ends the response, and every request hangs until the 300s function timeout. It looks correct, typechecks, and passes unit tests, because tests call the exported function directly and never go through Vercel's launcher. Only the deploy smoke test catches it.
+
 ## Shared packages must ship built output
 
 `packages/contracts` builds to `dist/` and its `exports` point there — never at `src/*.ts`. Node cannot import raw TypeScript, so a package exporting `.ts` appears to work everywhere locally (vitest transpiles, `tsc` only checks types) and then fails at runtime the moment it is deployed. This template shipped exactly that bug in v1.0–v1.2; every request returned HTTP 500 while all four gate tiers stayed green.
