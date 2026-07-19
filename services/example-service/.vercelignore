@@ -1,0 +1,12 @@
+# Vercel compiles EVERY file under api/ into its own serverless function, so
+# a test colocated with a handler ships as a live public endpoint. Tests here
+# live in src/ instead, but this is the belt-and-braces guard for anyone who
+# colocates one later.
+*.test.ts
+*.test.tsx
+*.spec.ts
+__tests__/
+
+# Never needed at runtime, and keeps the upload small.
+stryker.config.json
+vitest.config.ts

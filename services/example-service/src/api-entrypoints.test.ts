@@ -4,11 +4,16 @@ import {
 } from '@deploy-shield/contracts';
 import { describe, expect, it } from 'vitest';
 
-import echoHandler from './echo.js';
-import healthHandler from './health.js';
+import echoHandler from '../api/echo.js';
+import healthHandler from '../api/health.js';
 
 // These tests exercise the Vercel entrypoints themselves (not just the src/
 // handlers they wrap) so the changed-file coverage gate sees them as covered.
+//
+// They live in src/, NOT next to the entrypoints in api/: Vercel compiles
+// every file under api/ into its own serverless function, so a colocated
+// *.test.ts ships as a live public endpoint. `.vercelignore` blocks that too;
+// this file's location is the first line of defense.
 describe('api entrypoints', () => {
   it('health entrypoint returns a contracts-shaped health response', async () => {
     const response = await healthHandler(
