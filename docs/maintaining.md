@@ -34,6 +34,18 @@ Any change to a gate's command, threshold, or scope updates all three in the sam
 
 **Self-verify's coverage is intentionally partial.** The suite proves nine gates reject bad input — fake secret (gitleaks), ESLint violation, cross-service import (dependency-cruiser), uncovered change (changed-coverage), type error (typecheck), misformatted file (prettier), and one bad fixture each for shellcheck, yamllint, and actionlint — plus a clean-commit positive control. Three classes remain deliberately untested negatively: **jscpd**, because its threshold is a repo-wide ratio and a fixed duplication fixture silently loses potency as the repo grows (the negative test would rot exactly where it's meant to protect); **audit/OSV**, because a negative test needs a real vulnerable dependency in the lockfile plus network access; and the **nightly gates** (semgrep, mutation, licenses), which are too heavyweight for a per-PR suite. If you weaken one of those, nothing but code review catches it.
 
+## Shared packages must ship built output
+
+`packages/contracts` builds to `dist/` and its `exports` point there — never at `src/*.ts`. Node cannot import raw TypeScript, so a package exporting `.ts` appears to work everywhere locally (vitest transpiles, `tsc` only checks types) and then fails at runtime the moment it is deployed. This template shipped exactly that bug in v1.0–v1.2; every request returned HTTP 500 while all four gate tiers stayed green.
+
+Three places encode the same specifier and must stay in sync when you add a shared package:
+
+1. the package's `exports` → built output (what the deployed lambda loads)
+2. `tsconfig.base.json` → `paths` → source (so typechecking needs no build)
+3. the consuming service's `vitest.config.ts` → `resolve.alias` → source (so tests need no build)
+
+The deploy workflow runs `pnpm build` before invoking Vercel, because Vercel's file tracer can only follow the import once `dist/` exists.
+
 ## Version pinning and upgrades
 
 - All tools are exact-pinned: npm devDependencies in `package.json`, non-npm binaries in `mise.toml`.

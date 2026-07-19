@@ -4,6 +4,21 @@ All notable changes to this project are documented in this file. The format is b
 
 Releases are the **only** update signal for downstream clones — there is no mechanism that propagates template changes into a repo that already ran "Use this template". Check this file (or the GitHub Releases page) against your clone's `package.json` → `deployShield.templateVersion` to see whether you're behind.
 
+## [1.3.0] - 2026-07-19
+
+### Fixed
+
+- **The example service now actually runs when deployed.** `packages/contracts` exported raw TypeScript (`exports` → `./src/index.ts`), which every local consumer tolerated because vitest transpiles and `tsc` only checks types — but Node cannot import `.ts`, so every deployed request failed with `ERR_MODULE_NOT_FOUND` and returned HTTP 500. The package now builds to `dist/` and exports the built output.
+
+### Added
+
+- **Post-deploy smoke test.** The production job requests `/api/health` and fails if it doesn't return 200. A deploy exiting 0 only proves the upload succeeded; nothing else in the four gate tiers ever executes the built artifact, which is exactly how a service that 500s on every request shipped green. Previews are excluded — they sit behind Vercel SSO unless the project configures Protection Bypass for Automation.
+- `pnpm build` (root) builds all workspace packages; the deploy workflow runs it before invoking Vercel so the file tracer can follow `contracts` into `dist/`.
+
+### Changed
+
+- Typechecking and tests stay buildless: `tsconfig.base.json` maps the `@deploy-shield/contracts` specifier to source via `paths`, and the example service's `vitest.config.ts` mirrors it with `resolve.alias`. Keep those two and the package's `exports` in sync.
+
 ## [1.2.0] - 2026-07-19
 
 ### Fixed
