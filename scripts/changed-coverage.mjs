@@ -34,6 +34,26 @@ import { pathToFileURL } from 'node:url';
 
 const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
 
+/**
+ * Environment for git subprocesses: the real environment (PATH, etc.) with
+ * every GIT_* variable stripped, so `cwd` alone decides which repository
+ * git acts on. A git hook (pre-push, pre-commit, …) exports GIT_DIR,
+ * GIT_WORK_TREE, and GIT_INDEX_FILE into the processes it spawns; left in
+ * place, those override `cwd` and silently redirect every command at the
+ * hook's repository instead of the one the caller asked for. This gate — and
+ * its tests, which point `cwd` at throwaway repos — must always act on `cwd`.
+ * Exported so the test suite reuses the exact same sanitization.
+ */
+export const GIT_ENV = (() => {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) {
+      delete env[key];
+    }
+  }
+  return env;
+})();
+
 // Mirrors vitest.config.ts's `coverage.include` / `coverage.exclude` —
 // keep these globs in sync with that file.
 const INCLUDE_GLOBS = [
@@ -79,6 +99,7 @@ function gitCapture(args, cwd) {
       cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
+      env: GIT_ENV,
     }).trim();
   } catch {
     return null;
@@ -88,7 +109,7 @@ function gitCapture(args, cwd) {
 /** Runs a git command purely for its exit code (e.g. `show-ref --quiet`). */
 function gitOk(args, cwd) {
   try {
-    execFileSync('git', args, { cwd, stdio: 'ignore' });
+    execFileSync('git', args, { cwd, stdio: 'ignore', env: GIT_ENV });
     return true;
   } catch {
     return false;

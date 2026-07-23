@@ -4,11 +4,17 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { main } from './changed-coverage.mjs';
+import { GIT_ENV, main } from './changed-coverage.mjs';
 
 /**
  * Builds a real (but throwaway) git repo under a temp dir so the base
  * resolution + `git diff` logic is exercised end to end, not mocked.
+ *
+ * All git subprocesses below run with `GIT_ENV` (imported from the gate
+ * script — the real environment minus every GIT_* variable). Without it,
+ * running this suite inside a git hook — which exports GIT_DIR /
+ * GIT_WORK_TREE — would redirect these throwaway-repo commits at the real
+ * repository, silently committing fixtures onto the branch under test.
  */
 function createRepo() {
   const dir = mkdtempSync(path.join(tmpdir(), 'changed-coverage-'));
@@ -19,7 +25,7 @@ function createRepo() {
 }
 
 function git(cwd, args) {
-  execFileSync('git', args, { cwd, stdio: 'ignore' });
+  execFileSync('git', args, { cwd, stdio: 'ignore', env: GIT_ENV });
 }
 
 function writeSourceFile(repoDir, relativePath, contents) {
@@ -227,6 +233,7 @@ describe('changed-coverage', () => {
     const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: repoDir,
       encoding: 'utf8',
+      env: GIT_ENV,
     }).trim();
 
     writeSourceFile(
@@ -304,6 +311,7 @@ describe('changed-coverage', () => {
     reposToClean.push(repoDir);
     execFileSync('git', ['clone', '-q', originDir, repoDir], {
       stdio: 'ignore',
+      env: GIT_ENV,
     });
     git(repoDir, ['config', 'user.email', 'test@example.com']);
     git(repoDir, ['config', 'user.name', 'Test']);
