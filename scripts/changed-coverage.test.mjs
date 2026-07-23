@@ -7,6 +7,24 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { main } from './changed-coverage.mjs';
 
 /**
+ * Environment for git subprocesses: the real environment with every GIT_*
+ * variable stripped, so `cwd` alone decides which repo git acts on. Without
+ * this, running the suite inside a git hook (which exports GIT_DIR /
+ * GIT_WORK_TREE / GIT_INDEX_FILE) would redirect these throwaway-repo commits
+ * at the real repository — silently committing fixtures onto the branch under
+ * test. Mirrors the gate script's own GIT_ENV.
+ */
+const GIT_ENV = (() => {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_')) {
+      delete env[key];
+    }
+  }
+  return env;
+})();
+
+/**
  * Builds a real (but throwaway) git repo under a temp dir so the base
  * resolution + `git diff` logic is exercised end to end, not mocked.
  */
@@ -19,7 +37,7 @@ function createRepo() {
 }
 
 function git(cwd, args) {
-  execFileSync('git', args, { cwd, stdio: 'ignore' });
+  execFileSync('git', args, { cwd, stdio: 'ignore', env: GIT_ENV });
 }
 
 function writeSourceFile(repoDir, relativePath, contents) {
@@ -227,6 +245,7 @@ describe('changed-coverage', () => {
     const baseSha = execFileSync('git', ['rev-parse', 'HEAD'], {
       cwd: repoDir,
       encoding: 'utf8',
+      env: GIT_ENV,
     }).trim();
 
     writeSourceFile(
@@ -304,6 +323,7 @@ describe('changed-coverage', () => {
     reposToClean.push(repoDir);
     execFileSync('git', ['clone', '-q', originDir, repoDir], {
       stdio: 'ignore',
+      env: GIT_ENV,
     });
     git(repoDir, ['config', 'user.email', 'test@example.com']);
     git(repoDir, ['config', 'user.name', 'Test']);
