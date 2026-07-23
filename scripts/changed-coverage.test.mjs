@@ -4,29 +4,17 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { main } from './changed-coverage.mjs';
-
-/**
- * Environment for git subprocesses: the real environment with every GIT_*
- * variable stripped, so `cwd` alone decides which repo git acts on. Without
- * this, running the suite inside a git hook (which exports GIT_DIR /
- * GIT_WORK_TREE / GIT_INDEX_FILE) would redirect these throwaway-repo commits
- * at the real repository — silently committing fixtures onto the branch under
- * test. Mirrors the gate script's own GIT_ENV.
- */
-const GIT_ENV = (() => {
-  const env = { ...process.env };
-  for (const key of Object.keys(env)) {
-    if (key.startsWith('GIT_')) {
-      delete env[key];
-    }
-  }
-  return env;
-})();
+import { GIT_ENV, main } from './changed-coverage.mjs';
 
 /**
  * Builds a real (but throwaway) git repo under a temp dir so the base
  * resolution + `git diff` logic is exercised end to end, not mocked.
+ *
+ * All git subprocesses below run with `GIT_ENV` (imported from the gate
+ * script — the real environment minus every GIT_* variable). Without it,
+ * running this suite inside a git hook — which exports GIT_DIR /
+ * GIT_WORK_TREE — would redirect these throwaway-repo commits at the real
+ * repository, silently committing fixtures onto the branch under test.
  */
 function createRepo() {
   const dir = mkdtempSync(path.join(tmpdir(), 'changed-coverage-'));

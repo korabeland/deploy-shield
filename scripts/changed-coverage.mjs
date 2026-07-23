@@ -42,8 +42,9 @@ const EMPTY_TREE_HASH = '4b825dc642cb6eb9a060e54bf8d69288fbee4904';
  * place, those override `cwd` and silently redirect every command at the
  * hook's repository instead of the one the caller asked for. This gate — and
  * its tests, which point `cwd` at throwaway repos — must always act on `cwd`.
+ * Exported so the test suite reuses the exact same sanitization.
  */
-const GIT_ENV = (() => {
+export const GIT_ENV = (() => {
   const env = { ...process.env };
   for (const key of Object.keys(env)) {
     if (key.startsWith('GIT_')) {
