@@ -3,6 +3,8 @@ coverage/
 dist/
 .vercel/
 reports/
+.stryker-tmp/
+stryker-setup-*.js
 *.tsbuildinfo
 .DS_Store
 .env*
