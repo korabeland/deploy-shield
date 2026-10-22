@@ -106,8 +106,8 @@ jobs:
         # Base allowlist per SPEC.md, extended with what the real
         # dependency tree contains today (see docs/plans — U8 report):
         # BlueOak-1.0.0 (the isaacs BSD-family license used by tar/glob/
-        # minimatch/etc., pulled in by license-checker-rseidelsohn's own
-        # npm-registry toolchain), 0BSD (tslib, via vite/rolldown), MPL-2.0
+        # minimatch/etc., pulled in by the license checker's dependency
+        # traversal), 0BSD (tslib, via vite/rolldown), MPL-2.0
         # (@edge-runtime/*, lightningcss, via vitest's optional browser
         # mocker dependency on vite), CC-BY-4.0 (caniuse-lite, via
         # browserslist in Stryker's Babel-based instrumenter), and the
@@ -121,7 +121,7 @@ jobs:
             MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause;BlueOak-1.0.0;0BSD;
             MPL-2.0;CC-BY-4.0;CC-BY-3.0;CC0-1.0;MIT AND CC-BY-3.0
         run: >-
-          pnpm exec license-checker-rseidelsohn
+          pnpm exec license-checker-evergreen
           --onlyAllow "$ALLOWED_LICENSES"
           --excludePrivatePackages
           --summary
