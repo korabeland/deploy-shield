@@ -93,7 +93,7 @@ Two further jobs run alongside: an **OSV-Scanner** scan (reusable-workflow call)
 
 - **Semgrep** — SAST with pinned TS/JS registry rulesets (no login / no `SEMGREP_APP_TOKEN`)
 - **Stryker** (vitest runner) — mutation testing per package, incremental mode with the incremental JSON cached between runs; `thresholds.high` = 80 (the visible bar), `thresholds.break` = 70 (the failure line), documented ratchet to 80 once stable; monthly forced full run to reset incremental drift
-- **License compliance** — allowlist audit via license-checker-rseidelsohn (`--onlyAllow`)
+- **License compliance** — allowlist audit using `pnpm licenses list` and `scripts/check-license-allowlist.mjs`
 
 A red nightly run opens (or updates, deduplicated by label) a GitHub issue via the `gh` CLI — no third-party issue actions — with the run URL and per-gate failure summary, so it's assignable to an agent next session. Deploys stay governed by the merge gates.
 
@@ -161,7 +161,7 @@ Designed so parallel agent fleets can build without stepping on each other:
 | Stryker (@stryker-mutator/vitest-runner) | Mutation testing |
 | Semgrep | Nightly SAST (PyPI/Docker distribution — the npm `semgrep` package is a placeholder, never install it) |
 | OSV-Scanner v2 | Dependency vulnerability audit (v2 CLI syntax differs from v1) |
-| license-checker-rseidelsohn | License allowlist audit (original `license-checker` is abandoned; `license-checker-evergreen` is the fallback fork) |
+| pnpm licenses | Lists dependency licenses for the allowlist audit |
 | yamllint / actionlint / ShellCheck | Config & script linting |
 | mise | Version-pinned installation of non-npm binaries (gitleaks, semgrep, osv-scanner, shellcheck, actionlint), locally and in CI via mise-action |
 | Vercel CLI (pinned as devDependency) | Deploy from CI |

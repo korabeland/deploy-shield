@@ -119,7 +119,7 @@ For every gate: what a failure means, the sanctioned fix, and the sanctioned ove
 
 ## License allowlist
 
-- **Runs:** nightly `licenses` job (`license-checker-rseidelsohn --onlyAllow "$ALLOWED_LICENSES" --excludePrivatePackages --summary`).
-- **Failure means:** a dependency (direct or transitive) carries a license not in the allowlist defined in `.github/workflows/nightly.yml`'s `ALLOWED_LICENSES` env.
+- **Runs:** nightly `licenses` job (`node scripts/check-license-allowlist.mjs`), which reads the package list from `pnpm licenses list --json` and checks it against `ALLOWED_LICENSES` in `.github/workflows/nightly.yml`.
+- **Failure means:** a listed dependency carries a license not in the allowlist.
 - **Fix:** replace the dependency with one under an allowed license.
-- **Override:** extend the allowlist in `nightly.yml` consciously — it already carries more than the base five (`MIT;Apache-2.0;ISC;BSD-2-Clause;BSD-3-Clause`) to cover real transitive dev-tooling licenses (`BlueOak-1.0.0`, `0BSD`, `MPL-2.0`, `CC-BY-4.0`, `CC-BY-3.0`, `CC0-1.0`, `MIT AND CC-BY-3.0`) — see the comment above that job for what pulls each one in. Alternatively, scope the scan with `--production` to exclude dev-only dependencies from the audit entirely if the flagged package never ships.
+- **Override:** extend the allowlist in `nightly.yml` consciously. It includes licenses used by transitive development dependencies; see the comment above that job for examples.

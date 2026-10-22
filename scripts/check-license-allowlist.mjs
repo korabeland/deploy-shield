@@ -28,8 +28,9 @@ const licenseGroups = JSON.parse(result.stdout);
 const packages = Object.entries(licenseGroups).flatMap(([license, entries]) =>
   entries.map((entry) => ({ license, ...entry })),
 );
-const disallowed = packages.filter(({ license }) =>
-  !allowedLicenses.some((allowedLicense) => license.includes(allowedLicense)),
+const disallowed = packages.filter(
+  ({ license }) =>
+    !allowedLicenses.some((allowedLicense) => license.includes(allowedLicense)),
 );
 
 if (disallowed.length > 0) {
