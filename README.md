@@ -80,7 +80,7 @@ Database-per-service is a documented **convention**, not something v1's tooling 
 - **Production is public on Vercel's free plan, and you cannot turn that off.** Setting `deploymentType: "all"` is rejected with `428 invalid_sso_protection`; `all_except_custom_domains` is the ceiling and protects previews only. Assume anything this template deploys to production is world-readable — keep the deployed surface to endpoints you are content to expose, or run the project on a plan that supports production authentication.
 - Vercel's **git auto-deploy integration must stay OFF**. `services/example-service/vercel.json` sets `"git": {"deploymentEnabled": false}` declaratively — this survives someone later reconnecting the git integration in the dashboard; the dashboard toggle alone does not.
 - Preview deploys run on every PR push; since the Vercel bot doesn't comment on CLI-driven deploys, the workflow posts/updates a sticky PR comment with the preview URL itself.
-- Production deploys are triggered by the CI workflow completing successfully on `main` (a `workflow_run` trigger, not `push`) — this makes "no green, no deploy" structural even for ruleset-bypassing pushes.
+- Production deploys run only after a successful CI workflow caused by a push to this repository's own `main` branch. Pull request runs, including runs from forks whose branch is named `main`, cannot deploy. The `workflow_run` trigger keeps "no green, no deploy" structural even for ruleset-bypassing pushes.
 - **Org-owned repos**: `gitleaks-action` requires a `GITLEAKS_LICENSE` secret for organization-owned repositories (personal-account repos are exempt). Set it before the `secrets` CI job will run cleanly on an org repo.
 
 ## GUI git client PATH gotcha
