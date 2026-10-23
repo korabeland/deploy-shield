@@ -13,7 +13,7 @@ AI agents meet whatever quality bar you set. The pipeline *is* the bar: Deploy S
 flowchart TD
     A["Tier 1 — Pre-commit\n(lefthook, ~3-5s)\ngitleaks, eslint, prettier,\ndependency-cruiser, shellcheck/yamllint/actionlint"] --> B["Tier 2 — Pre-push\n(lefthook)\ntests, typecheck, jscpd,\nchanged-file coverage, pnpm audit + osv-scanner"]
     B --> C["Tier 3 — CI on PR\n(GitHub Actions, gate aggregator)\n9 checks: lint, typecheck, architecture,\ntests-build, quality, secrets, workflow-lint,\nosv, self-verify"]
-    C --> D["Deploy\n(merge to main, CI-only)\nvercel build + vercel deploy --prebuilt"]
+    C --> D["Deploy\n(push to this repo's main, CI-only)\nvercel build + vercel deploy --prebuilt"]
     E["Tier 4 — Nightly\n(scheduled)\nsemgrep, stryker mutation, license audit"] -.->|"red run files/updates\na labeled GitHub issue"| F[GitHub Issue]
     C -.->|"deploys stay governed by Tier 3"| E
 ```
