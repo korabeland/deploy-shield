@@ -83,7 +83,7 @@ Greenfield — no existing code. SPEC.md and CLAUDE.md (both authored 2026-07-17
 - **Nightly-failure issues via hand-rolled `gh` steps, label-deduplicated** — zero third-party action supply-chain surface in a security-posture template; dedupe by label, not title.
 - **Fake secrets for self-verification are generated at test runtime, never committed** — committed fixtures would trip GitHub push protection and gitleaks on the template itself.
 - **Missing local binaries fail with "run `mise install`"** — never skip-if-missing; silently skipping a security gate is the anti-pattern.
-- **Production deploys trigger on `workflow_run` (CI completed successfully on `main`), not on `push`** — this makes "no green, no deploy" structural even for ruleset-bypassing pushes (admins, `--bypass`), since the deploy job literally cannot start without a green CI run. Previews deploy directly on `pull_request` — they are inspection artifacts, intentionally not gated.
+- **Production deploys require a successful CI run from a push to this repository's own `main` branch.** The current contract is documented in [README.md](../../README.md#vercel-setup) and enforced by `.github/workflows/deploy.yml`. Previews deploy directly on `pull_request` — they are inspection artifacts, intentionally not gated.
 - **OSV-Scanner in CI runs as a reusable-workflow call (`uses:`) inside ci.yml, included in `gate`'s `needs`** — a job calling a reusable workflow is a legal `needs` dependency; if fork-PR permission constraints (`security-events: write`) surface in practice, the documented fallback is demoting it to advisory while the pre-push OSV scan stays blocking.
 - **Example service is a minimal deployable HTTP endpoint** (Vercel Build Output–compatible) so the deploy job is real and testable, not dormant.
 
@@ -304,14 +304,14 @@ Greenfield — no existing code. SPEC.md and CLAUDE.md (both authored 2026-07-17
 
 **Approach:**
 - Preview job (`pull_request`): `vercel pull --environment=preview` → `build` → `deploy --prebuilt` with `--cwd services/example-service`; capture stdout URL; post/update a sticky PR comment via `gh pr comment` (Vercel bot is silent on CLI deploys). Concurrency `preview-${{ github.ref }}`, cancel-in-progress. Guard with `if: github.event_name == 'pull_request'` — deploy.yml carries two triggers, and unguarded, every `workflow_run` completion on main would start a pointless preview that fails at `gh pr comment` with no PR in context.
-- Production job: deploy.yml triggers on `workflow_run` — the CI workflow completing with `conclusion: success` on `main` (see Key Technical Decisions: structural "no green, no deploy" even for ruleset-bypassing pushes). Guard the job with an explicit conclusion check, and check out `${{ github.event.workflow_run.head_sha }}` explicitly so the built artifact is exactly the commit CI verified — a default checkout takes the branch tip at event time, which can race ahead of the verified commit if someone bypass-pushes while the deploy starts. `--prod` variants of pull/build/deploy; concurrency `production-deploy`, no cancel-in-progress (merges queue in order); GitHub Environment `production` holding `VERCEL_TOKEN` — environment protection rules give a free human-approval gate later without workflow changes.
+- Production job: see `.github/workflows/deploy.yml` for the current `workflow_run` conditions. Check out `${{ github.event.workflow_run.head_sha }}` explicitly so the built artifact is exactly the commit CI verified — a default checkout takes the branch tip at event time, which can race ahead of the verified commit if someone bypass-pushes while the deploy starts. `--prod` variants of pull/build/deploy; concurrency `production-deploy`, no cancel-in-progress (merges queue in order); GitHub Environment `production` holding `VERCEL_TOKEN` — environment protection rules give a free human-approval gate later without workflow changes.
 - Secrets: `VERCEL_TOKEN` (secret), `VERCEL_ORG_ID` / `VERCEL_PROJECT_ID` (vars). Vercel CLI pinned as devDependency; run `pnpm vercel …`.
 
 **Test scenarios:**
 - Test expectation: none automatable in the template without a live Vercel project — verification is the documented E2E pass (R4) performed once against a real project; actionlint covers static validity.
 
 **Verification:**
-- With real secrets set: PR gets a preview URL comment; merge to `main` produces a production deploy; pushing with auto-deploy accidentally re-enabled produces **no** duplicate deploy (`deploymentEnabled: false` honored).
+- With real secrets set: PR gets a preview URL comment; a push to this repository's `main` after successful CI produces a production deploy; pushing with auto-deploy accidentally re-enabled produces **no** duplicate deploy (`deploymentEnabled: false` honored).
 
 ### U8. Nightly workflow — deep scans and issue automation
 

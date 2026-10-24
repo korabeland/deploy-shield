@@ -2,10 +2,10 @@ name: Deploy
 
 # Two triggers, two jobs:
 #   - `pull_request`  -> preview job: a PR gets a live preview on every push.
-#   - `workflow_run`  -> production job: fires only once the CI workflow has
-#     completed on `main`. This makes "no green, no deploy" structural even
-#     for ruleset-bypassing pushes (admins, `--bypass`) — the production job
-#     literally cannot start without a completed CI run to react to.
+#   - `workflow_run`  -> production job: considers CI completions whose head
+#     branch is `main`; the job also requires a successful push from this repo.
+#     This makes "no green, no deploy" structural even for ruleset-bypassing
+#     pushes (admins, `--bypass`).
 #
 # The `vercel` package was removed as a devDependency (its transitive deps
 # failed this repo's own blocking audit gates), so the CLI is invoked via
@@ -147,7 +147,15 @@ jobs:
 
   production:
     name: production
-    if: github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success'
+    # Only CI runs from a push to this repository's own main branch may
+    # deploy. The `branches` filter above matches the head branch name alone,
+    # so the event type and head repository are checked here as well.
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.event.workflow_run.head_branch == 'main'
     runs-on: ubuntu-latest
     # A hung deploy must fail fast: this concurrency group never cancels
     # in-progress runs, so without a timeout one stuck Vercel call would
