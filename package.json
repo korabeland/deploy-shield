@@ -20,7 +20,7 @@
     "@vitest/coverage-v8": "4.1.12",
     "dependency-cruiser": "18.1.0",
     "eslint": "10.7.0",
-    "jscpd": "5.0.12",
+    "jscpd": "5.4.2",
     "lefthook": "2.2.2",
     "prettier": "3.9.10",
     "typescript": "6.0.3",
