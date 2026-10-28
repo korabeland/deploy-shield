@@ -19,7 +19,7 @@
     "@types/node": "22.20.1",
     "@vitest/coverage-v8": "4.1.12",
     "dependency-cruiser": "18.1.0",
-    "eslint": "10.7.0",
+    "eslint": "10.13.0",
     "jscpd": "5.0.12",
     "lefthook": "2.2.2",
     "prettier": "3.9.10",
